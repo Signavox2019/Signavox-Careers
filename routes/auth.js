@@ -14,10 +14,10 @@ router.post('/login', authController.login);
 // Admin creates recruiter/admin
 router.post('/create-user', auth, permit('admin'), authController.createUserByAdmin);
 
-// Forgot Password - send OTP
-router.post('/forgot-password', authController.forgotPassword);
-
 // Reset Password using OTP
 router.post('/reset-password', authController.resetPassword);
+
+// Send OTP for verification / password reset
+router.post('/send-otp', authController.sendOTP);
 
 module.exports = router;

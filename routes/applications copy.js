@@ -18,7 +18,7 @@ router.get('/my', auth, permit('candidate'), applicationController.getMyApplicat
 router.post('/assign', auth, permit('admin'), applicationController.assignToRecruiter);
 
 // Update application status (recruiter or admin)
-router.put('/:applicationId/stage', auth, applicationController.updateApplicationStatus);
+router.put('/:applicationId/status', auth, applicationController.updateApplicationStatus);
 
 // Delete an application (admin or candidate who applied)
 router.delete('/:applicationId', auth, permit('admin', 'candidate'), applicationController.deleteApplication);
