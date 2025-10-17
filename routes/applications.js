@@ -26,4 +26,12 @@ router.delete('/:applicationId', auth, permit('admin', 'candidate'), application
 // Application statistics (admin/recruiter)
 router.get('/stats/overview', auth, permit('admin', 'recruiter'), applicationController.getApplicationStatistics);
 
+// ✅ Manual offer letter generation (optional, admin/recruiter)
+router.post('/:applicationId/offerletter', auth, permit('admin', 'recruiter'), applicationController.generateOfferLetterManually);
+
+// Get my offer letter (candidate/admin/recruiter)
+router.get('/:applicationId/offerletter', auth, applicationController.getOfferLetter);
+
+
+
 module.exports = router;

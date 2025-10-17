@@ -27,7 +27,7 @@ const ApplicationSchema = new mongoose.Schema({
   statusNotes: String,
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   source: { type: String, default: 'portal' },
-  offerLetterUrl: String // Optional offer letter link
+  offerLetterUrl: { type: String, default: null }
 });
 
 module.exports = mongoose.model('Application', ApplicationSchema);
