@@ -4,9 +4,7 @@ const User = require('../models/User');
 const { sendMail } = require('../utils/email'); // Email utility
 const { generateOfferLetterPDF } = require('../utils/generateOfferLetter');
 
-// ================================
 // Apply to a Job
-// ================================
 exports.applyToJob = async (req, res) => {
   try {
     const candidate = req.user;
@@ -124,9 +122,7 @@ exports.getMyApplications = async (req, res) => {
   }
 };
 
-// ================================
 // Assign Application to Recruiter
-// ================================
 exports.assignToRecruiter = async (req, res) => {
   try {
     const { applicationId, recruiterId } = req.body;
@@ -153,9 +149,8 @@ exports.assignToRecruiter = async (req, res) => {
   }
 };
 
-// ================================
+
 // Update Application Stage / Status (Manual Only)
-// ================================
 exports.updateApplicationStatus = async (req, res) => {
   try {
     const { applicationId } = req.params;
@@ -211,9 +206,80 @@ exports.updateApplicationStatus = async (req, res) => {
   }
 };
 
-// ================================
+// Update Application Stage / Status (Manual Only)
+exports.updateApplicationStatus = async (req, res) => {
+  try {
+    const { applicationId } = req.params;
+    const { stage, statusNotes } = req.body;
+
+    const app = await Application.findById(applicationId)
+      .populate('candidate', 'firstName lastName email')
+      .populate('job', 'title team');
+
+    if (!app) return res.status(404).json({ message: 'Application not found' });
+
+    if (stage) app.stage = stage;
+    if (statusNotes) app.statusNotes = statusNotes;
+    await app.save();
+
+    // ✅ Send stage update email
+    try {
+      const candidate = app.candidate;
+      const job = app.job;
+      const stageMap = {
+        applied: 'Application Received',
+        resume_shortlisted: 'Resume Shortlisted',
+        screening_test: 'Screening Test',
+        technical_interview: 'Technical Interview Round',
+        hr_interview: 'HR Interview Round',
+        offered: 'Job Offer',
+        rejected: 'Application Rejected',
+        hired: 'Congratulations! You are Hired 🎉'
+      };
+
+      const subject = `Update on your application for ${job.title}`;
+      const html = `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+          <h2 style="color: #0073e6;">${stageMap[stage] || 'Application Update'}</h2>
+          <p>Dear <strong>${candidate.firstName} ${candidate.lastName}</strong>,</p>
+          <p>Your application for the position of <strong>${job.title}</strong> is now at stage: <strong>${stageMap[stage]}</strong>.</p>
+          ${statusNotes ? `<p>Note: ${statusNotes}</p>` : ''}
+          <p>We’ll keep you updated with further progress.</p>
+          <br/>
+          <p>Best regards,<br/><strong>Signavox Careers Team</strong></p>
+        </div>
+      `;
+      await sendMail({ to: candidate.email, subject, html });
+    } catch (emailError) {
+      console.error('Error sending status email:', emailError.message);
+    }
+
+    // ✅ Don’t return offerLetterUrl or extra details
+    res.json({
+      message: 'Application stage updated successfully (no offer letter generated)',
+      application: {
+        _id: app._id,
+        stage: app.stage,
+        statusNotes: app.statusNotes,
+        candidate: {
+          firstName: app.candidate.firstName,
+          lastName: app.candidate.lastName,
+          email: app.candidate.email
+        },
+        job: {
+          title: app.job.title,
+          team: app.job.team
+        }
+      }
+    });
+
+  } catch (err) {
+    console.error('Error in updateApplicationStatus:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
 // Delete Application
-// ================================
 exports.deleteApplication = async (req, res) => {
   try {
     const { applicationId } = req.params;
@@ -230,9 +296,7 @@ exports.deleteApplication = async (req, res) => {
   }
 };
 
-// ================================
 // Application Statistics
-// ================================
 exports.getApplicationStatistics = async (req, res) => {
   try {
     const user = req.user;
@@ -258,6 +322,50 @@ exports.getApplicationStatistics = async (req, res) => {
   }
 };
 
+
+// exports.generateOfferLetterManually = async (req, res) => {
+//   try {
+//     const { applicationId } = req.params;
+//     const app = await Application.findById(applicationId)
+//       .populate('candidate', 'firstName lastName email phoneNumber')
+//       .populate('job', 'title team');
+
+//     if (!app) return res.status(404).json({ message: 'Application not found' });
+
+//     const candidate = app.candidate;
+//     const job = app.job;
+
+//     const offerLetterUrl = await generateOfferLetterPDF(candidate, job);
+
+//     app.offerLetterUrl = offerLetterUrl;
+//     app.stage = 'hired'; // stage updated manually
+//     await app.save();
+
+//     const subject = `🎉 Offer Letter for ${job.title}`;
+//     const html = `
+//       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+//         <h2 style="color: #0073e6;">Welcome to Signavox!</h2>
+//         <p>Dear <strong>${candidate.firstName} ${candidate.lastName}</strong>,</p>
+//         <p>We are delighted to offer you the position of <strong>${job.title}</strong> in our <strong>${job.team}</strong> team.</p>
+//         <p>Your official offer letter is ready. You can download it here:</p>
+//         <p><a href="${offerLetterUrl}" style="color: #0073e6;">Download Offer Letter (PDF)</a></p>
+//         <p>We look forward to having you onboard soon!</p>
+//         <br/>
+//         <p>Best regards,<br/><strong>Signavox Careers Team</strong></p>
+//       </div>
+//     `;
+//     await sendMail({ to: candidate.email, subject, html });
+
+//     console.log(`✅ Offer letter manually generated and emailed to ${candidate.email}`);
+
+//     res.status(200).json({ message: 'Offer letter generated successfully', offerLetterUrl, application: app });
+
+//   } catch (error) {
+//     console.error('❌ Error in generateOfferLetterManually:', error.message);
+//     res.status(500).json({ message: 'Server error', error: error.message });
+//   }
+// };
+
 // ================================
 // Generate Offer Letter (Manual Trigger Only)
 // ================================
@@ -270,15 +378,32 @@ exports.generateOfferLetterManually = async (req, res) => {
 
     if (!app) return res.status(404).json({ message: 'Application not found' });
 
+    // ✅ Restrict generation unless stage === 'hired'
+    if (app.stage !== 'hired') {
+      return res.status(400).json({
+        message: `Offer letter can only be generated when the stage is 'hired'. Current stage: '${app.stage}'.`
+      });
+    }
+
+    // ✅ If already generated, prevent duplicate creation
+    if (app.offerLetterUrl) {
+      return res.status(400).json({
+        message: 'Offer letter already generated for this candidate.',
+        offerLetterUrl: app.offerLetterUrl
+      });
+    }
+
     const candidate = app.candidate;
     const job = app.job;
 
+    // Generate PDF offer letter (stored in S3 or local)
     const offerLetterUrl = await generateOfferLetterPDF(candidate, job);
 
+    // Save offer letter URL (no stage modification)
     app.offerLetterUrl = offerLetterUrl;
-    app.stage = 'hired'; // stage updated manually
     await app.save();
 
+    // Send offer letter email
     const subject = `🎉 Offer Letter for ${job.title}`;
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
@@ -294,15 +419,22 @@ exports.generateOfferLetterManually = async (req, res) => {
     `;
     await sendMail({ to: candidate.email, subject, html });
 
-    console.log(`✅ Offer letter manually generated and emailed to ${candidate.email}`);
+    console.log(`✅ Offer letter generated (stage: hired) for ${candidate.email}`);
 
-    res.status(200).json({ message: 'Offer letter generated successfully', offerLetterUrl, application: app });
+    res.status(200).json({
+      message: 'Offer letter generated successfully',
+      offerLetterUrl,
+      application: app
+    });
 
   } catch (error) {
     console.error('❌ Error in generateOfferLetterManually:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+
+
 
 // ================================
 // Get Offer Letter
