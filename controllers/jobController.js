@@ -117,8 +117,8 @@ exports.getJobById = async (req, res) => {
     await autoCloseExpiredJobs();
 
     const job = await Job.findById(req.params.id)
-      .populate('createdBy', 'name email role')
-      .populate('assignedTo', 'name email role');
+      .populate('createdBy')
+      .populate('assignedTo');
 
     if (!job) return res.status(404).json({ message: 'Job not found' });
 
