@@ -2,7 +2,6 @@ const mongoose = require('mongoose');
 
 const JobSchema = new mongoose.Schema({
   title: { type: String, required: true },
-  department: { type: String, required: true },
   location: { type: String, required: true },
   type: { 
     type: String, 
@@ -10,7 +9,6 @@ const JobSchema = new mongoose.Schema({
     default: 'Full-Time' 
   },
   experience: { type: String },
-  salary: { type: String },
   postedDate: { type: String, default: () => new Date().toISOString() },
   closingDate: { type: String },
   applicants: { type: Number, default: 0 },
@@ -19,11 +17,46 @@ const JobSchema = new mongoose.Schema({
   // Reference to admin who created the job
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 
+  // ✅ Recruiter assigned to this job
+  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
   jobDescription: {
     category: { type: String },
-    positionLevel: { type: String },
-    ctc: { type: String },
-    shift: { type: String },
+
+    // ✅ Added enum for position level
+    positionLevel: { 
+      type: String,
+      enum: [
+        'Intern',
+        'Fresher',
+        'Junior',
+        'Mid-Level',
+        'Senior',
+        // 'Lead',
+        'Manager'
+      ]
+    },
+
+    // ✅ Updated CTC as min/max
+    ctc: {
+      min: { type: String },
+      max: { type: String }
+    },
+
+    // ✅ Added enum for shift types
+    shift: { 
+      type: String,
+      enum: [
+        'Day Shift',
+        'Night Shift',
+        'Rotational Shift',
+        'Flexible',
+        'Hybrid',
+        'Remote'
+      ],
+      default: 'Day Shift'
+    },
+
     openings: { type: Number, default: 1 },
     aboutRole: { type: String },
     responsibilities: [{ type: String }],
@@ -44,16 +77,14 @@ const JobSchema = new mongoose.Schema({
     }
   },
 
+  // ✅ Simplified hiring workflow (removed duration, icon, timeline)
   hiringWorkflow: {
     stages: [
       {
         stage: { type: String },
-        description: { type: String },
-        duration: { type: String },
-        icon: { type: String }
+        description: { type: String }
       }
-    ],
-    timeline: { type: String }
+    ]
   },
 
   eligibilityCriteria: {

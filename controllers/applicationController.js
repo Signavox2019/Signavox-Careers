@@ -5,6 +5,74 @@ const { sendMail } = require('../utils/email'); // Email utility
 const { generateOfferLetterPDF } = require('../utils/generateOfferLetter');
 
 // Apply to a Job
+// exports.applyToJob = async (req, res) => {
+//   try {
+//     const candidate = req.user;
+//     const { jobId, coverLetter } = req.body;
+
+//     const job = await Job.findById(jobId);
+//     if (!job) return res.status(404).json({ message: 'Job not found' });
+
+//     if (job.status === 'closed') {
+//       return res.status(400).json({ message: 'You cannot apply to this job as it is closed' });
+//     }
+
+//     const existingApplication = await Application.findOne({
+//       candidate: candidate._id,
+//       job: job._id
+//     });
+//     if (existingApplication) {
+//       return res.status(400).json({ message: 'You have already applied for this job' });
+//     }
+
+//     const resumeSnapshot = req.file ? req.file.location : candidate.resume;
+
+//     const application = new Application({
+//       candidate: candidate._id,
+//       job: job._id,
+//       resumeSnapshot,
+//       coverLetter
+//     });
+
+//     await application.save();
+
+//     const populatedApp = await Application.findById(application._id)
+//       .populate('candidate', 'firstName lastName email phoneNumber')
+//       .populate('job', 'title team');
+
+//     // Send confirmation email
+//     try {
+//       const fullName = `${candidate.firstName} ${candidate.lastName}`;
+//       const subject = `Application Confirmation - ${job.title}`;
+//       const html = `
+//         <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+//           <h2 style="color: #0073e6;">Application Received</h2>
+//           <p>Dear <strong>${fullName}</strong>,</p>
+//           <p>Thank you for applying for the position of <strong>${job.title}</strong> in our <strong>${job.team}</strong> team.</p>
+//           <p>Your application has been successfully submitted and is currently under review.</p>
+//           <p>We will reach out to you if your profile matches our requirements.</p>
+//           <br />
+//           <p>Best regards,<br /><strong>Signavox Careers Team</strong></p>
+//         </div>
+//       `;
+//       await sendMail({ to: candidate.email, subject, html, text: `Dear ${fullName}, your application for ${job.title} has been received.` });
+//     } catch (emailError) {
+//       console.error('Error sending application email:', emailError.message);
+//     }
+
+//     res.status(201).json({
+//       message: 'Applied successfully',
+//       application: populatedApp
+//     });
+
+//   } catch (err) {
+//     console.error('Error in applyToJob:', err);
+//     res.status(500).json({ message: 'Server error', error: err.message });
+//   }
+// };
+// ================================
+// Apply to a Job
+// ================================
 exports.applyToJob = async (req, res) => {
   try {
     const candidate = req.user;
@@ -36,11 +104,15 @@ exports.applyToJob = async (req, res) => {
 
     await application.save();
 
+    // ✅ Increment applicant count
+    job.applicants = (job.applicants || 0) + 1;
+    await job.save();
+
     const populatedApp = await Application.findById(application._id)
       .populate('candidate', 'firstName lastName email phoneNumber')
-      .populate('job', 'title team');
+      .populate('job', 'title team applicants'); // include applicants
 
-    // Send confirmation email
+    // ✅ Send confirmation email
     try {
       const fullName = `${candidate.firstName} ${candidate.lastName}`;
       const subject = `Application Confirmation - ${job.title}`;
@@ -55,14 +127,19 @@ exports.applyToJob = async (req, res) => {
           <p>Best regards,<br /><strong>Signavox Careers Team</strong></p>
         </div>
       `;
-      await sendMail({ to: candidate.email, subject, html, text: `Dear ${fullName}, your application for ${job.title} has been received.` });
+      await sendMail({
+        to: candidate.email,
+        subject,
+        html,
+        text: `Dear ${fullName}, your application for ${job.title} has been received.`,
+      });
     } catch (emailError) {
       console.error('Error sending application email:', emailError.message);
     }
 
     res.status(201).json({
       message: 'Applied successfully',
-      application: populatedApp
+      application: populatedApp,
     });
 
   } catch (err) {
@@ -280,6 +357,25 @@ exports.updateApplicationStatus = async (req, res) => {
 };
 
 // Delete Application
+// exports.deleteApplication = async (req, res) => {
+//   try {
+//     const { applicationId } = req.params;
+
+//     const app = await Application.findById(applicationId);
+//     if (!app) return res.status(404).json({ message: 'Application not found' });
+
+//     await Application.findByIdAndDelete(applicationId);
+//     res.json({ message: 'Application deleted successfully' });
+
+//   } catch (err) {
+//     console.error('Error in deleteApplication:', err);
+//     res.status(500).json({ message: 'Server error', error: err.message });
+//   }
+// };
+
+// ================================
+// Delete Application
+// ================================
 exports.deleteApplication = async (req, res) => {
   try {
     const { applicationId } = req.params;
@@ -287,14 +383,18 @@ exports.deleteApplication = async (req, res) => {
     const app = await Application.findById(applicationId);
     if (!app) return res.status(404).json({ message: 'Application not found' });
 
+    // ✅ Decrease applicant count in job
+    await Job.findByIdAndUpdate(app.job, { $inc: { applicants: -1 } });
+
     await Application.findByIdAndDelete(applicationId);
-    res.json({ message: 'Application deleted successfully' });
+    res.json({ message: 'Application deleted successfully and applicant count updated' });
 
   } catch (err) {
     console.error('Error in deleteApplication:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
+
 
 // Application Statistics
 exports.getApplicationStatistics = async (req, res) => {
