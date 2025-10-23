@@ -6,69 +6,107 @@ const { sendMail } = require('../utils/email');
 const generateOTP = require('../utils/generateOTP');
 
 // ================================
-// Register Candidate
+// Register Candidate (with resume + profileImage)
 // ================================
 exports.registerCandidate = async (req, res) => {
   try {
-    const {
-      firstName, middleName, lastName,
+    let {
+      firstName, middleName, lastName, gender,
       email, phoneNumber, pan, skills = [],
-      education = [], experienced = false, experiences = []
+      education = [], experienced = false,
+      experiences = []
     } = req.body;
 
-    // Check uniqueness
+    // Convert strings to proper types
+    if (typeof experienced === 'string') {
+      experienced = experienced.toLowerCase() === 'true';
+    }
+
+    if (typeof skills === 'string') {
+      try { skills = JSON.parse(skills); } catch { skills = skills.split(',').map(s => s.trim()); }
+    }
+
+    if (typeof education === 'string') {
+      try { education = JSON.parse(education); } catch { education = []; }
+    }
+
+    if (typeof experiences === 'string') {
+      try { experiences = JSON.parse(experiences); } catch { experiences = []; }
+    }
+
+    // Normalize gender
+    if (gender) gender = gender.toLowerCase();
+
+    // Validations
+    if (!firstName || !lastName) return res.status(400).json({ message: 'First and last name are required' });
+    if (!gender) return res.status(400).json({ message: 'Gender is required' });
+    if (!['male', 'female', 'other'].includes(gender)) return res.status(400).json({ message: 'Invalid gender value' });
+
     if (await User.findOne({ email })) return res.status(400).json({ message: 'Email already registered' });
     if (phoneNumber && await User.findOne({ phoneNumber })) return res.status(400).json({ message: 'Phone number already registered' });
     if (pan && await User.findOne({ pan })) return res.status(400).json({ message: 'PAN already registered' });
+    if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan)) return res.status(400).json({ message: 'Invalid PAN format' });
 
-    // PAN validation
-    if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan))
-      return res.status(400).json({ message: 'Invalid PAN format' });
-
-    // Experience validation
-    if (experienced && (!experiences || experiences.length === 0))
+    if (experienced && (!experiences || experiences.length === 0)) {
       return res.status(400).json({ message: 'Experience details required for experienced candidates' });
-
-    const rawPassword = generatePassword();
-    const hashed = await bcrypt.hash(rawPassword, 10);
-    const resume = req.file ? req.file.location : undefined;
-
-    // Determine role
-    let role = 'candidate';
-    if (email === 'Khaja.Rahiman@signavoxtechnologies.com') {
-      role = 'admin';
     }
 
+    // File uploads
+    let resume, profileImage;
+    if (req.files) {
+      if (req.files['resume']) resume = req.files['resume'][0].location || req.files['resume'][0].path;
+      if (req.files['profileImage']) profileImage = req.files['profileImage'][0].location || req.files['profileImage'][0].path;
+    }
+
+    // Password generation
+    const rawPassword = generatePassword();
+    const hashed = await bcrypt.hash(rawPassword, 10);
+
+    // Role assignment
+    let role = 'candidate';
+    if (email === 'Khaja.Rahiman@signavoxtechnologies.com') role = 'admin';
+
+    // Create user
     const user = new User({
-      firstName,
-      middleName,
-      lastName,
-      email,
+      firstName: firstName.trim(),
+      middleName: middleName?.trim() || '',
+      lastName: lastName.trim(),
+      gender,
+      email: email.toLowerCase(),
       phoneNumber,
       pan,
-      skills: Array.isArray(skills) ? skills : (skills ? skills.split(',').map(s => s.trim()) : []),
+      skills,
       education,
       experienced,
       experiences,
       resume,
+      profileImage,
       password: hashed,
       role
     });
 
     await user.save();
 
-    // Send credentials email
+    // Send email
     const html = `
-      <p>Hi ${firstName},</p>
-      <p>Your account has been created for SignaVox Careers.</p>
+      <p>Hi ${user.firstName},</p>
+      <p>Your account has been created for <strong>SignaVox Careers</strong>.</p>
       <p><strong>Email:</strong> ${email}</p>
       <p><strong>Password:</strong> ${rawPassword}</p>
-      <p>Please login and change your password.</p>
+      <p>Please login and change your password after first login.</p>
     `;
-
     await sendMail({ to: email, subject: 'SignaVox Careers - Account Created', html });
 
-    res.status(201).json({ message: 'Registered successfully. Check your email for credentials.' });
+    // Full response (excluding password)
+    const userResponse = await User.findById(user._id)
+      .select('-password -__v')
+      .lean();
+
+    res.status(201).json({
+      message: 'Registered successfully. Check your email for credentials.',
+      user: userResponse
+    });
+
   } catch (err) {
     console.error(err);
     if (err.code === 11000) {
@@ -80,19 +118,17 @@ exports.registerCandidate = async (req, res) => {
 };
 
 // ================================
-// Login (with role in JWT)
+// Login
 // ================================
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: 'Invalid credentials' });
 
     const matched = await bcrypt.compare(password, user.password);
     if (!matched) return res.status(400).json({ message: 'Invalid credentials' });
 
-    // ✅ Include role and id in token
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
@@ -100,10 +136,11 @@ exports.login = async (req, res) => {
     );
 
     const { password: _, __v, ...userData } = user.toObject();
+
     res.json({
       message: 'Login successful',
       token,
-      user: userData
+      user: { ...userData, name: user.name }
     });
   } catch (err) {
     console.error(err);
@@ -114,97 +151,157 @@ exports.login = async (req, res) => {
 // ================================
 // Admin creates recruiter/admin
 // ================================
+
+
 exports.createUserByAdmin = async (req, res) => {
   try {
-    const {
-      firstName, middleName, lastName,
-      email, phoneNumber, pan,
-      skills = [], education = [],
-      experienced = false, experiences = [],
-      role = 'recruiter', team = 'technical'
-    } = req.body;
-
-    if (!email || !firstName || !lastName) return res.status(400).json({ message: 'Missing required fields' });
-
-    if (await User.findOne({ email })) return res.status(400).json({ message: 'Email already exists' });
-    if (phoneNumber && await User.findOne({ phoneNumber })) return res.status(400).json({ message: 'Phone number already exists' });
-    if (pan && await User.findOne({ pan })) return res.status(400).json({ message: 'PAN already exists' });
-
-    if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan))
-      return res.status(400).json({ message: 'Invalid PAN format' });
-
-    if (experienced && (!experiences || experiences.length === 0))
-      return res.status(400).json({ message: 'Experience details required for experienced users' });
-
-    const rawPassword = generatePassword();
-    const hashed = await bcrypt.hash(rawPassword, 10);
-
-    const user = new User({
+    let {
       firstName,
       middleName,
       lastName,
+      gender,
       email,
       phoneNumber,
       pan,
-      skills: Array.isArray(skills) ? skills : (skills ? skills.split(',').map(s => s.trim()) : []),
+      skills,
       education,
       experienced,
       experiences,
       role,
+      team
+    } = req.body;
+
+    // ----------------------------
+    // Required fields validation (except profileImage)
+    // ----------------------------
+    const requiredFields = { firstName, lastName, gender, email, phoneNumber, pan, skills, education, experienced, role, team };
+    for (const [key, value] of Object.entries(requiredFields)) {
+      if (value === undefined || value === null || value === '') {
+        return res.status(400).json({ message: `Field "${key}" is required` });
+      }
+    }
+
+    if (!req.files || !req.files['resume']) {
+      return res.status(400).json({ message: 'Resume is required' });
+    }
+
+    // ----------------------------
+    // Parse JSON strings if needed
+    // ----------------------------
+    if (typeof skills === 'string') {
+      try { skills = JSON.parse(skills); }
+      catch { skills = skills.split(',').map(s => s.trim()); }
+    }
+
+    if (typeof education === 'string') {
+      try { education = JSON.parse(education); }
+      catch { return res.status(400).json({ message: 'Invalid JSON format for education' }); }
+    }
+
+    if (typeof experiences === 'string') {
+      try { experiences = JSON.parse(experiences); }
+      catch { return res.status(400).json({ message: 'Invalid JSON format for experiences' }); }
+    }
+
+    // ----------------------------
+    // Validations
+    // ----------------------------
+    gender = gender.toLowerCase();
+    if (!['male', 'female', 'other'].includes(gender)) {
+      return res.status(400).json({ message: 'Invalid gender value' });
+    }
+
+    if (experienced === 'true' || experienced === true) experienced = true;
+    else experienced = false;
+
+    if (experienced && (!experiences || experiences.length === 0)) {
+      return res.status(400).json({ message: 'Experience details required for experienced users' });
+    }
+
+    if (await User.findOne({ email })) return res.status(400).json({ message: 'Email already exists' });
+    if (await User.findOne({ phoneNumber })) return res.status(400).json({ message: 'Phone number already exists' });
+    if (await User.findOne({ pan })) return res.status(400).json({ message: 'PAN already exists' });
+
+    if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan)) return res.status(400).json({ message: 'Invalid PAN format' });
+
+    // ----------------------------
+    // Handle file uploads
+    // ----------------------------
+    const resume = req.files['resume'][0].location || req.files['resume'][0].path;
+    let profileImage = null;
+    if (req.files['profileImage']) {
+      profileImage = req.files['profileImage'][0].location || req.files['profileImage'][0].path;
+    }
+
+    // ----------------------------
+    // Generate password
+    // ----------------------------
+    const rawPassword = generatePassword();
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+    // ----------------------------
+    // Create User
+    // ----------------------------
+    const user = new User({
+      firstName: firstName.trim(),
+      middleName: middleName?.trim() || '',
+      lastName: lastName.trim(),
+      gender,
+      email: email.toLowerCase(),
+      phoneNumber,
+      pan,
+      skills,
+      education,
+      experienced,
+      experiences,
+      resume,
+      profileImage, // optional
+      role,
       team,
-      password: hashed
+      password: hashedPassword
     });
 
     await user.save();
 
+    // ----------------------------
+    // Send credentials email
+    // ----------------------------
     const html = `
-      <p>Hi ${firstName},</p>
+      <p>Hi ${user.firstName},</p>
       <p>Your account has been created for SignaVox Careers.</p>
       <p><strong>Email:</strong> ${email}</p>
       <p><strong>Password:</strong> ${rawPassword}</p>
+      <p>Please login and change your password after first login.</p>
     `;
-
     await sendMail({ to: email, subject: 'SignaVox Careers - Account Created', html });
+
+    // ----------------------------
+    // Return user (exclude sensitive fields)
+    // ----------------------------
+    const fullUser = await User.findById(user._id)
+      .select('-password -resetPasswordOtp -resetPasswordExpiry')
+      .lean();
 
     res.status(201).json({
       message: 'User created successfully and email sent',
-      user: {
-        firstName, middleName, lastName, email, role, team, skills, education, experienced, experiences
-      }
+      user: fullUser
     });
+
   } catch (err) {
     console.error(err);
     if (err.code === 11000) {
       const field = Object.keys(err.keyValue)[0];
       return res.status(400).json({ message: `${field} already exists` });
     }
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ message: 'Validation failed', error: err.message });
+    }
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
 
-// ================================
-// Reset Password with OTP
-// ================================
-exports.resetPassword = async (req, res) => {
-  try {
-    const { email, otp, newPassword } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: 'Email not registered' });
 
-    if (!user.resetPasswordOtp || user.resetPasswordOtp !== otp || Date.now() > user.resetPasswordExpiry)
-      return res.status(400).json({ message: 'Invalid or expired OTP' });
 
-    user.password = await bcrypt.hash(newPassword, 10);
-    user.resetPasswordOtp = undefined;
-    user.resetPasswordExpiry = undefined;
-    await user.save();
-
-    res.status(200).json({ message: 'Password reset successfully' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
 
 // ================================
 // Send OTP
@@ -226,9 +323,38 @@ exports.sendOTP = async (req, res) => {
       <h2>${otp}</h2>
       <p>This OTP will expire in 10 minutes.</p>
     `;
-
     await sendMail({ to: email, subject: 'SignaVox Careers - OTP', html });
+
     res.status(200).json({ message: 'OTP sent to your email' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// ================================
+// Reset Password
+// ================================
+exports.resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ message: 'Email not registered' });
+
+    if (
+      !user.resetPasswordOtp ||
+      user.resetPasswordOtp !== otp ||
+      Date.now() > user.resetPasswordExpiry
+    ) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.resetPasswordOtp = undefined;
+    user.resetPasswordExpiry = undefined;
+    await user.save();
+
+    res.status(200).json({ message: 'Password reset successfully' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });

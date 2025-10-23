@@ -24,10 +24,10 @@ const ExperienceSchema = new mongoose.Schema({
   responsibilities: { type: String }
 }, { _id: false });
 
-// const SocialLinksSchema = new mongoose.Schema({
-//   linkedin: String,
-//   github: String
-// }, { _id: false });
+const SocialLinksSchema = new mongoose.Schema({
+  linkedin: String,
+  github: String
+}, { _id: false });
 
 // =====================
 // Main User Schema
@@ -59,7 +59,7 @@ const UserSchema = new mongoose.Schema({
   DOB: Date,
   permanentAddress: String,
   currentAddress: String,
-  // socialLinks: SocialLinksSchema,
+  socialLinks: SocialLinksSchema,
   profileImage: String,
   resume: { type: String, required: true },
 
@@ -77,64 +77,26 @@ const UserSchema = new mongoose.Schema({
     }
   },
 
-  // New field to store gap analysis
-  careerGapFlags: [String],
-
   password: { type: String, required: true },
   resetPasswordOtp: String,
   resetPasswordExpiry: Date,
   createdAt: { type: Date, default: Date.now }
 });
 
-// =====================
 // Compute full name
-// =====================
 UserSchema.pre('save', function (next) {
   const parts = [this.firstName, this.middleName, this.lastName].filter(Boolean);
   this.name = parts.join(' ');
-
-  // Automatically compute career gap flags before saving
-  if (this.education && this.education.length > 0) {
-    const sortedEdu = [...this.education].sort((a, b) => a.passedYear - b.passedYear);
-    const flags = [];
-
-    for (let i = 0; i < sortedEdu.length - 1; i++) {
-      const current = sortedEdu[i];
-      const next = sortedEdu[i + 1];
-      const gap = next.passedYear - current.passedYear;
-
-      // Define expected durations based on known transitions
-      const expectedDurations = {
-        '10th-12th': 2,
-        '12th-Degree': 3,
-        '12th-BTech': 4,
-        'Diploma-BTech': 4,
-        'Degree-MTech': 2,
-        'Degree-MSC': 2
-      };
-
-      const key = `${current.programOrDegree}-${next.programOrDegree}`;
-      const expected = expectedDurations[key] || null;
-
-      if (expected && gap > expected) {
-        const extra = gap - expected;
-        flags.push(
-          `⚠️ There is a ${extra}-year career gap between ${current.programOrDegree} (${current.passedYear}) and ${next.programOrDegree} (${next.passedYear}).`
-        );
-      }
-    }
-
-    this.careerGapFlags = flags;
-  }
-
   next();
 });
 
-// Update hook (if education is modified)
 UserSchema.pre('findOneAndUpdate', function (next) {
   const update = this.getUpdate();
   if (update.firstName || update.middleName || update.lastName) {
-    const parts = [update.firstName, update.middleName, update.lastName].filter(Boolean);
+    const first = update.firstName || this._update.firstName;
+    const middle = update.middleName || this._update.middleName;
+    const last = update.lastName || this._update.lastName;
+    const parts = [first, middle, last].filter(Boolean);
     update.name = parts.join(' ');
   }
   next();
