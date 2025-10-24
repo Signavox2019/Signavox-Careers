@@ -24,10 +24,10 @@ const ExperienceSchema = new mongoose.Schema({
   responsibilities: { type: String }
 }, { _id: false });
 
-// const SocialLinksSchema = new mongoose.Schema({
-//   linkedin: String,
-//   github: String
-// }, { _id: false });
+const SocialLinksSchema = new mongoose.Schema({
+  linkedin: String,
+  github: String
+}, { _id: false });
 
 // =====================
 // Main User Schema
@@ -59,7 +59,7 @@ const UserSchema = new mongoose.Schema({
   DOB: Date,
   permanentAddress: String,
   currentAddress: String,
-  // socialLinks: SocialLinksSchema,
+  socialLinks: SocialLinksSchema,
   profileImage: String,
   resume: { type: String, required: true },
 

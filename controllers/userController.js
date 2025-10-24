@@ -24,61 +24,89 @@ exports.getUserById = async (req, res) => {
 };
 
 // Update user (auto recalculates name + gap flags)
+
+
 // exports.updateUser = async (req, res) => {
 //   try {
 //     const updateData = { ...req.body };
 
+//     // ----------------------------
+//     // Handle JSON fields from multipart/form-data
+//     // ----------------------------
+//     if (updateData.education && typeof updateData.education === 'string') {
+//       try {
+//         updateData.education = JSON.parse(updateData.education);
+//       } catch (err) {
+//         return res.status(400).json({ message: 'Invalid education JSON format' });
+//       }
+//     }
+
+//     if (updateData.experiences && typeof updateData.experiences === 'string') {
+//       try {
+//         updateData.experiences = JSON.parse(updateData.experiences);
+//       } catch (err) {
+//         return res.status(400).json({ message: 'Invalid experiences JSON format' });
+//       }
+//     }
+
+//     if (updateData.skills && typeof updateData.skills === 'string') {
+//       try {
+//         updateData.skills = JSON.parse(updateData.skills);
+//       } catch {
+//         updateData.skills = updateData.skills.split(',').map(s => s.trim());
+//       }
+//     }
+
+//     // ----------------------------
 //     // Handle file uploads
+//     // ----------------------------
 //     if (req.file) {
 //       if (req.file.fieldname === 'resume') updateData.resume = req.file.location;
 //       if (req.file.fieldname === 'profileImage') updateData.profileImage = req.file.location;
 //     }
 
-//     // Recalculate name if name parts changed
-//     if (updateData.firstName || updateData.middleName || updateData.lastName) {
-//       const parts = [updateData.firstName, updateData.middleName, updateData.lastName].filter(Boolean);
-//       updateData.name = parts.join(' ');
-//     }
-
-//     const user = await User.findByIdAndUpdate(req.params.id, updateData, {
-//       new: true,
-//       runValidators: true,
-//     }).select('-password -resetPasswordOtp -resetPasswordExpiry');
-
-//     if (!user) return res.status(404).json({ message: 'User not found' });
-
-//     res.json({ message: 'User updated successfully', user });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: 'Server error', error: err.message });
-//   }
-// };
-// exports.updateUser = async (req, res) => {
-//   try {
-//     const updateData = { ...req.body };
-
-//     // Handle file uploads
 //     if (req.files) {
 //       if (req.files['resume']) updateData.resume = req.files['resume'][0].location;
 //       if (req.files['profileImage']) updateData.profileImage = req.files['profileImage'][0].location;
 //     }
 
+//     // ----------------------------
 //     // Recalculate name if name parts changed
+//     // ----------------------------
 //     if (updateData.firstName || updateData.middleName || updateData.lastName) {
-//       const parts = [updateData.firstName, updateData.middleName, updateData.lastName].filter(Boolean);
+//       const parts = [
+//         updateData.firstName || '',
+//         updateData.middleName || '',
+//         updateData.lastName || ''
+//       ].filter(Boolean);
 //       updateData.name = parts.join(' ');
 //     }
 
-//     const user = await User.findByIdAndUpdate(req.params.id, updateData, {
-//       new: true,
-//       runValidators: true,
-//     }).select('-password -resetPasswordOtp -resetPasswordExpiry');
-
+//     // ----------------------------
+//     // Fetch user and update fields
+//     // ----------------------------
+//     const user = await User.findById(req.params.id);
 //     if (!user) return res.status(404).json({ message: 'User not found' });
 
-//     res.json({ message: 'User updated successfully', user });
+//     // Update fields
+//     for (const key in updateData) {
+//       user[key] = updateData[key];
+//     }
+
+//     // Save user to trigger pre-save hooks (careerGapFlags recalculation)
+//     await user.save();
+
+//     const userObj = user.toObject();
+//     delete userObj.password;
+//     delete userObj.resetPasswordOtp;
+//     delete userObj.resetPasswordExpiry;
+
+//     res.json({ message: 'User updated successfully', user: userObj });
 //   } catch (err) {
 //     console.error(err);
+//     if (err.name === 'CastError' || err.name === 'ObjectParameterError') {
+//       return res.status(400).json({ message: 'Invalid data format', error: err.message });
+//     }
 //     res.status(500).json({ message: 'Server error', error: err.message });
 //   }
 // };
@@ -87,71 +115,39 @@ exports.updateUser = async (req, res) => {
   try {
     const updateData = { ...req.body };
 
-    // ----------------------------
-    // Handle JSON fields from multipart/form-data
-    // ----------------------------
-    if (updateData.education && typeof updateData.education === 'string') {
-      try {
-        updateData.education = JSON.parse(updateData.education);
-      } catch (err) {
-        return res.status(400).json({ message: 'Invalid education JSON format' });
+    // Parse JSON fields
+    const jsonFields = ['education', 'experiences', 'skills', 'socialLinks'];
+    for (const field of jsonFields) {
+      if (updateData[field] && typeof updateData[field] === 'string') {
+        try { updateData[field] = JSON.parse(updateData[field]); }
+        catch (err) {
+          if (field === 'skills') {
+            updateData[field] = updateData[field].split(',').map(s => s.trim());
+          } else {
+            return res.status(400).json({ message: `Invalid JSON format for ${field}` });
+          }
+        }
       }
     }
 
-    if (updateData.experiences && typeof updateData.experiences === 'string') {
-      try {
-        updateData.experiences = JSON.parse(updateData.experiences);
-      } catch (err) {
-        return res.status(400).json({ message: 'Invalid experiences JSON format' });
-      }
-    }
-
-    if (updateData.skills && typeof updateData.skills === 'string') {
-      try {
-        updateData.skills = JSON.parse(updateData.skills);
-      } catch {
-        updateData.skills = updateData.skills.split(',').map(s => s.trim());
-      }
-    }
-
-    // ----------------------------
     // Handle file uploads
-    // ----------------------------
-    if (req.file) {
-      if (req.file.fieldname === 'resume') updateData.resume = req.file.location;
-      if (req.file.fieldname === 'profileImage') updateData.profileImage = req.file.location;
-    }
-
     if (req.files) {
       if (req.files['resume']) updateData.resume = req.files['resume'][0].location;
       if (req.files['profileImage']) updateData.profileImage = req.files['profileImage'][0].location;
     }
 
-    // ----------------------------
-    // Recalculate name if name parts changed
-    // ----------------------------
+    // Recalculate name if needed
     if (updateData.firstName || updateData.middleName || updateData.lastName) {
-      const parts = [
-        updateData.firstName || '',
-        updateData.middleName || '',
-        updateData.lastName || ''
-      ].filter(Boolean);
+      const parts = [updateData.firstName, updateData.middleName, updateData.lastName].filter(Boolean);
       updateData.name = parts.join(' ');
     }
 
-    // ----------------------------
-    // Fetch user and update fields
-    // ----------------------------
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Update fields
-    for (const key in updateData) {
-      user[key] = updateData[key];
-    }
-
-    // Save user to trigger pre-save hooks (careerGapFlags recalculation)
-    await user.save();
+    // Update all fields dynamically
+    Object.assign(user, updateData);
+    await user.save(); // triggers pre-save hooks for gap flags
 
     const userObj = user.toObject();
     delete userObj.password;
@@ -161,12 +157,10 @@ exports.updateUser = async (req, res) => {
     res.json({ message: 'User updated successfully', user: userObj });
   } catch (err) {
     console.error(err);
-    if (err.name === 'CastError' || err.name === 'ObjectParameterError') {
-      return res.status(400).json({ message: 'Invalid data format', error: err.message });
-    }
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
+
 
 
 

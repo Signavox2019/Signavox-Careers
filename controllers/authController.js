@@ -8,19 +8,131 @@ const generateOTP = require('../utils/generateOTP');
 // ================================
 // Register Candidate (with resume + profileImage)
 // ================================
+// exports.registerCandidate = async (req, res) => {
+//   try {
+//     let {
+//       firstName, middleName, lastName, gender,
+//       email, phoneNumber, pan, skills = [],
+//       education = [], experienced = false,
+//       experiences = []
+//     } = req.body;
+
+//     // Convert strings to proper types
+//     if (typeof experienced === 'string') {
+//       experienced = experienced.toLowerCase() === 'true';
+//     }
+
+//     if (typeof skills === 'string') {
+//       try { skills = JSON.parse(skills); } catch { skills = skills.split(',').map(s => s.trim()); }
+//     }
+
+//     if (typeof education === 'string') {
+//       try { education = JSON.parse(education); } catch { education = []; }
+//     }
+
+//     if (typeof experiences === 'string') {
+//       try { experiences = JSON.parse(experiences); } catch { experiences = []; }
+//     }
+
+//     // Normalize gender
+//     if (gender) gender = gender.toLowerCase();
+
+//     // Validations
+//     if (!firstName || !lastName) return res.status(400).json({ message: 'First and last name are required' });
+//     if (!gender) return res.status(400).json({ message: 'Gender is required' });
+//     if (!['male', 'female', 'other'].includes(gender)) return res.status(400).json({ message: 'Invalid gender value' });
+
+//     if (await User.findOne({ email })) return res.status(400).json({ message: 'Email already registered' });
+//     if (phoneNumber && await User.findOne({ phoneNumber })) return res.status(400).json({ message: 'Phone number already registered' });
+//     if (pan && await User.findOne({ pan })) return res.status(400).json({ message: 'PAN already registered' });
+//     if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan)) return res.status(400).json({ message: 'Invalid PAN format' });
+
+//     if (experienced && (!experiences || experiences.length === 0)) {
+//       return res.status(400).json({ message: 'Experience details required for experienced candidates' });
+//     }
+
+//     // File uploads
+//     let resume, profileImage;
+//     if (req.files) {
+//       if (req.files['resume']) resume = req.files['resume'][0].location || req.files['resume'][0].path;
+//       if (req.files['profileImage']) profileImage = req.files['profileImage'][0].location || req.files['profileImage'][0].path;
+//     }
+
+//     // Password generation
+//     const rawPassword = generatePassword();
+//     const hashed = await bcrypt.hash(rawPassword, 10);
+
+//     // Role assignment
+//     let role = 'candidate';
+//     if (email === 'Khaja.Rahiman@signavoxtechnologies.com') role = 'admin';
+
+//     // Create user
+//     const user = new User({
+//       firstName: firstName.trim(),
+//       middleName: middleName?.trim() || '',
+//       lastName: lastName.trim(),
+//       gender,
+//       email: email.toLowerCase(),
+//       phoneNumber,
+//       pan,
+//       skills,
+//       education,
+//       experienced,
+//       experiences,
+//       resume,
+//       profileImage,
+//       password: hashed,
+//       role
+//     });
+
+//     await user.save();
+
+//     // Send email
+//     const html = `
+//       <p>Hi ${user.firstName},</p>
+//       <p>Your account has been created for <strong>SignaVox Careers</strong>.</p>
+//       <p><strong>Email:</strong> ${email}</p>
+//       <p><strong>Password:</strong> ${rawPassword}</p>
+//       <p>Please login and change your password after first login.</p>
+//     `;
+//     await sendMail({ to: email, subject: 'SignaVox Careers - Account Created', html });
+
+//     // Full response (excluding password)
+//     const userResponse = await User.findById(user._id)
+//       .select('-password -__v')
+//       .lean();
+
+//     res.status(201).json({
+//       message: 'Registered successfully. Check your email for credentials.',
+//       user: userResponse
+//     });
+
+//   } catch (err) {
+//     console.error(err);
+//     if (err.code === 11000) {
+//       const field = Object.keys(err.keyValue)[0];
+//       return res.status(400).json({ message: `${field} already exists` });
+//     }
+//     res.status(500).json({ message: 'Server error', error: err.message });
+//   }
+// };
+
+
+// ================================
+// Register Candidate (Complete version with all fields)
+// ================================
 exports.registerCandidate = async (req, res) => {
   try {
     let {
       firstName, middleName, lastName, gender,
       email, phoneNumber, pan, skills = [],
       education = [], experienced = false,
-      experiences = []
+      experiences = [], DOB, permanentAddress,
+      currentAddress, socialLinks = {}, team = 'none'
     } = req.body;
 
-    // Convert strings to proper types
-    if (typeof experienced === 'string') {
-      experienced = experienced.toLowerCase() === 'true';
-    }
+    // Convert string booleans & parse arrays
+    if (typeof experienced === 'string') experienced = experienced.toLowerCase() === 'true';
 
     if (typeof skills === 'string') {
       try { skills = JSON.parse(skills); } catch { skills = skills.split(',').map(s => s.trim()); }
@@ -34,10 +146,14 @@ exports.registerCandidate = async (req, res) => {
       try { experiences = JSON.parse(experiences); } catch { experiences = []; }
     }
 
+    if (typeof socialLinks === 'string') {
+      try { socialLinks = JSON.parse(socialLinks); } catch { socialLinks = {}; }
+    }
+
     // Normalize gender
     if (gender) gender = gender.toLowerCase();
 
-    // Validations
+    // Required field checks
     if (!firstName || !lastName) return res.status(400).json({ message: 'First and last name are required' });
     if (!gender) return res.status(400).json({ message: 'Gender is required' });
     if (!['male', 'female', 'other'].includes(gender)) return res.status(400).json({ message: 'Invalid gender value' });
@@ -57,6 +173,7 @@ exports.registerCandidate = async (req, res) => {
       if (req.files['resume']) resume = req.files['resume'][0].location || req.files['resume'][0].path;
       if (req.files['profileImage']) profileImage = req.files['profileImage'][0].location || req.files['profileImage'][0].path;
     }
+    if (!resume) return res.status(400).json({ message: 'Resume is required' });
 
     // Password generation
     const rawPassword = generatePassword();
@@ -81,6 +198,11 @@ exports.registerCandidate = async (req, res) => {
       experiences,
       resume,
       profileImage,
+      DOB,
+      permanentAddress,
+      currentAddress,
+      socialLinks,
+      team,
       password: hashed,
       role
     });
@@ -97,10 +219,7 @@ exports.registerCandidate = async (req, res) => {
     `;
     await sendMail({ to: email, subject: 'SignaVox Careers - Account Created', html });
 
-    // Full response (excluding password)
-    const userResponse = await User.findById(user._id)
-      .select('-password -__v')
-      .lean();
+    const userResponse = await User.findById(user._id).select('-password -__v').lean();
 
     res.status(201).json({
       message: 'Registered successfully. Check your email for credentials.',
@@ -153,70 +272,183 @@ exports.login = async (req, res) => {
 // ================================
 
 
+// exports.createUserByAdmin = async (req, res) => {
+//   try {
+//     let {
+//       firstName,
+//       middleName,
+//       lastName,
+//       gender,
+//       email,
+//       phoneNumber,
+//       pan,
+//       skills,
+//       education,
+//       experienced,
+//       experiences,
+//       role,
+//       team
+//     } = req.body;
+
+//     // ----------------------------
+//     // Required fields validation (except profileImage)
+//     // ----------------------------
+//     const requiredFields = { firstName, lastName, gender, email, phoneNumber, pan, skills, education, experienced, role, team };
+//     for (const [key, value] of Object.entries(requiredFields)) {
+//       if (value === undefined || value === null || value === '') {
+//         return res.status(400).json({ message: `Field "${key}" is required` });
+//       }
+//     }
+
+//     if (!req.files || !req.files['resume']) {
+//       return res.status(400).json({ message: 'Resume is required' });
+//     }
+
+//     // ----------------------------
+//     // Parse JSON strings if needed
+//     // ----------------------------
+//     if (typeof skills === 'string') {
+//       try { skills = JSON.parse(skills); }
+//       catch { skills = skills.split(',').map(s => s.trim()); }
+//     }
+
+//     if (typeof education === 'string') {
+//       try { education = JSON.parse(education); }
+//       catch { return res.status(400).json({ message: 'Invalid JSON format for education' }); }
+//     }
+
+//     if (typeof experiences === 'string') {
+//       try { experiences = JSON.parse(experiences); }
+//       catch { return res.status(400).json({ message: 'Invalid JSON format for experiences' }); }
+//     }
+
+//     // ----------------------------
+//     // Validations
+//     // ----------------------------
+//     gender = gender.toLowerCase();
+//     if (!['male', 'female', 'other'].includes(gender)) {
+//       return res.status(400).json({ message: 'Invalid gender value' });
+//     }
+
+//     if (experienced === 'true' || experienced === true) experienced = true;
+//     else experienced = false;
+
+//     if (experienced && (!experiences || experiences.length === 0)) {
+//       return res.status(400).json({ message: 'Experience details required for experienced users' });
+//     }
+
+//     if (await User.findOne({ email })) return res.status(400).json({ message: 'Email already exists' });
+//     if (await User.findOne({ phoneNumber })) return res.status(400).json({ message: 'Phone number already exists' });
+//     if (await User.findOne({ pan })) return res.status(400).json({ message: 'PAN already exists' });
+
+//     if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan)) return res.status(400).json({ message: 'Invalid PAN format' });
+
+//     // ----------------------------
+//     // Handle file uploads
+//     // ----------------------------
+//     const resume = req.files['resume'][0].location || req.files['resume'][0].path;
+//     let profileImage = null;
+//     if (req.files['profileImage']) {
+//       profileImage = req.files['profileImage'][0].location || req.files['profileImage'][0].path;
+//     }
+
+//     // ----------------------------
+//     // Generate password
+//     // ----------------------------
+//     const rawPassword = generatePassword();
+//     const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+//     // ----------------------------
+//     // Create User
+//     // ----------------------------
+//     const user = new User({
+//       firstName: firstName.trim(),
+//       middleName: middleName?.trim() || '',
+//       lastName: lastName.trim(),
+//       gender,
+//       email: email.toLowerCase(),
+//       phoneNumber,
+//       pan,
+//       skills,
+//       education,
+//       experienced,
+//       experiences,
+//       resume,
+//       profileImage, // optional
+//       role,
+//       team,
+//       password: hashedPassword
+//     });
+
+//     await user.save();
+
+//     // ----------------------------
+//     // Send credentials email
+//     // ----------------------------
+//     const html = `
+//       <p>Hi ${user.firstName},</p>
+//       <p>Your account has been created for SignaVox Careers.</p>
+//       <p><strong>Email:</strong> ${email}</p>
+//       <p><strong>Password:</strong> ${rawPassword}</p>
+//       <p>Please login and change your password after first login.</p>
+//     `;
+//     await sendMail({ to: email, subject: 'SignaVox Careers - Account Created', html });
+
+//     // ----------------------------
+//     // Return user (exclude sensitive fields)
+//     // ----------------------------
+//     const fullUser = await User.findById(user._id)
+//       .select('-password -resetPasswordOtp -resetPasswordExpiry')
+//       .lean();
+
+//     res.status(201).json({
+//       message: 'User created successfully and email sent',
+//       user: fullUser
+//     });
+
+//   } catch (err) {
+//     console.error(err);
+//     if (err.code === 11000) {
+//       const field = Object.keys(err.keyValue)[0];
+//       return res.status(400).json({ message: `${field} already exists` });
+//     }
+//     if (err.name === 'ValidationError') {
+//       return res.status(400).json({ message: 'Validation failed', error: err.message });
+//     }
+//     res.status(500).json({ message: 'Server error', error: err.message });
+//   }
+// };
+
+
 exports.createUserByAdmin = async (req, res) => {
   try {
     let {
-      firstName,
-      middleName,
-      lastName,
-      gender,
-      email,
-      phoneNumber,
-      pan,
-      skills,
-      education,
-      experienced,
-      experiences,
-      role,
-      team
+      firstName, middleName, lastName, gender,
+      email, phoneNumber, pan, skills, education,
+      experienced, experiences, role, team,
+      DOB, permanentAddress, currentAddress,
+      socialLinks = {}
     } = req.body;
 
-    // ----------------------------
-    // Required fields validation (except profileImage)
-    // ----------------------------
-    const requiredFields = { firstName, lastName, gender, email, phoneNumber, pan, skills, education, experienced, role, team };
-    for (const [key, value] of Object.entries(requiredFields)) {
-      if (value === undefined || value === null || value === '') {
-        return res.status(400).json({ message: `Field "${key}" is required` });
-      }
-    }
-
-    if (!req.files || !req.files['resume']) {
-      return res.status(400).json({ message: 'Resume is required' });
-    }
-
-    // ----------------------------
-    // Parse JSON strings if needed
-    // ----------------------------
+    // Parse possible JSON fields
     if (typeof skills === 'string') {
-      try { skills = JSON.parse(skills); }
-      catch { skills = skills.split(',').map(s => s.trim()); }
+      try { skills = JSON.parse(skills); } catch { skills = skills.split(',').map(s => s.trim()); }
     }
 
     if (typeof education === 'string') {
-      try { education = JSON.parse(education); }
-      catch { return res.status(400).json({ message: 'Invalid JSON format for education' }); }
+      try { education = JSON.parse(education); } catch { return res.status(400).json({ message: 'Invalid education format' }); }
     }
 
     if (typeof experiences === 'string') {
-      try { experiences = JSON.parse(experiences); }
-      catch { return res.status(400).json({ message: 'Invalid JSON format for experiences' }); }
+      try { experiences = JSON.parse(experiences); } catch { return res.status(400).json({ message: 'Invalid experiences format' }); }
     }
 
-    // ----------------------------
-    // Validations
-    // ----------------------------
-    gender = gender.toLowerCase();
-    if (!['male', 'female', 'other'].includes(gender)) {
-      return res.status(400).json({ message: 'Invalid gender value' });
+    if (typeof socialLinks === 'string') {
+      try { socialLinks = JSON.parse(socialLinks); } catch { socialLinks = {}; }
     }
 
-    if (experienced === 'true' || experienced === true) experienced = true;
-    else experienced = false;
-
-    if (experienced && (!experiences || experiences.length === 0)) {
-      return res.status(400).json({ message: 'Experience details required for experienced users' });
-    }
+    gender = gender?.toLowerCase();
+    if (!['male', 'female', 'other'].includes(gender)) return res.status(400).json({ message: 'Invalid gender value' });
 
     if (await User.findOne({ email })) return res.status(400).json({ message: 'Email already exists' });
     if (await User.findOne({ phoneNumber })) return res.status(400).json({ message: 'Phone number already exists' });
@@ -224,24 +456,17 @@ exports.createUserByAdmin = async (req, res) => {
 
     if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(pan)) return res.status(400).json({ message: 'Invalid PAN format' });
 
-    // ----------------------------
     // Handle file uploads
-    // ----------------------------
-    const resume = req.files['resume'][0].location || req.files['resume'][0].path;
-    let profileImage = null;
-    if (req.files['profileImage']) {
-      profileImage = req.files['profileImage'][0].location || req.files['profileImage'][0].path;
+    if (!req.files || !req.files['resume']) {
+      return res.status(400).json({ message: 'Resume is required' });
     }
 
-    // ----------------------------
-    // Generate password
-    // ----------------------------
+    const resume = req.files['resume'][0].location || req.files['resume'][0].path;
+    let profileImage = req.files['profileImage'] ? (req.files['profileImage'][0].location || req.files['profileImage'][0].path) : null;
+
     const rawPassword = generatePassword();
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
-    // ----------------------------
-    // Create User
-    // ----------------------------
     const user = new User({
       firstName: firstName.trim(),
       middleName: middleName?.trim() || '',
@@ -255,7 +480,11 @@ exports.createUserByAdmin = async (req, res) => {
       experienced,
       experiences,
       resume,
-      profileImage, // optional
+      profileImage,
+      DOB,
+      permanentAddress,
+      currentAddress,
+      socialLinks,
       role,
       team,
       password: hashedPassword
@@ -263,9 +492,6 @@ exports.createUserByAdmin = async (req, res) => {
 
     await user.save();
 
-    // ----------------------------
-    // Send credentials email
-    // ----------------------------
     const html = `
       <p>Hi ${user.firstName},</p>
       <p>Your account has been created for SignaVox Careers.</p>
@@ -275,9 +501,6 @@ exports.createUserByAdmin = async (req, res) => {
     `;
     await sendMail({ to: email, subject: 'SignaVox Careers - Account Created', html });
 
-    // ----------------------------
-    // Return user (exclude sensitive fields)
-    // ----------------------------
     const fullUser = await User.findById(user._id)
       .select('-password -resetPasswordOtp -resetPasswordExpiry')
       .lean();
@@ -293,15 +516,9 @@ exports.createUserByAdmin = async (req, res) => {
       const field = Object.keys(err.keyValue)[0];
       return res.status(400).json({ message: `${field} already exists` });
     }
-    if (err.name === 'ValidationError') {
-      return res.status(400).json({ message: 'Validation failed', error: err.message });
-    }
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
-
-
-
 
 // ================================
 // Send OTP
