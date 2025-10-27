@@ -9,6 +9,7 @@ const userRoutes = require('./routes/userRoutes');
 const jobsRoutes = require('./routes/jobs');
 const applicationsRoutes = require('./routes/applications');
 const auth = require('./routes/auth');
+require('./cron/offerExpiryCron');
 
 const app = express();
 

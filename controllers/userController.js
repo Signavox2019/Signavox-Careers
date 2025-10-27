@@ -1,22 +1,137 @@
 const User = require('../models/User');
+const Job = require('../models/Job');
+const Application = require('../models/Application');
 
 // Get all users (admin only)
+// exports.getAllUsers = async (req, res) => {
+//   try {
+//     const users = await User.find().select('-password -resetPasswordOtp -resetPasswordExpiry');
+//     res.json({ users });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Server error', error: err.message });
+//   }
+// };
+
+
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await User.find().select('-password -resetPasswordOtp -resetPasswordExpiry');
-    res.json({ users });
+
+    const usersWithExtra = await Promise.all(users.map(async (user) => {
+      const userObj = user.toObject();
+
+      // -----------------------
+      // For recruiter: show assigned jobs and applicant stats
+      // -----------------------
+      if (user.role === 'recruiter') {
+        const jobs = await Job.find({ assignedTo: user._id }).select('_id title type location status');
+        userObj.assignedJobs = jobs || [];
+
+        if (jobs && jobs.length > 0) {
+          const applicants = await Application.find({ job: { $in: jobs.map(j => j._id) } })
+            .populate('candidate', 'name email phone');
+          userObj.totalApplicants = applicants.length;
+          userObj.applicants = applicants.map(a => ({
+            _id: a.candidate?._id,
+            name: a.candidate?.name,
+            email: a.candidate?.email,
+            phone: a.candidate?.phone,
+            appliedAt: a.appliedAt,
+            jobId: a.job
+          }));
+        } else {
+          userObj.totalApplicants = 0;
+          userObj.applicants = [];
+        }
+      }
+
+      // -----------------------
+      // For candidate: show applied jobs
+      // -----------------------
+      if (user.role === 'candidate') {
+        const applications = await Application.find({ candidate: user._id })
+          .populate('job', 'title type location status');
+        userObj.appliedJobs = applications.map(a => ({
+          jobId: a.job?._id,
+          title: a.job?.title,
+          type: a.job?.type,
+          location: a.job?.location,
+          status: a.job?.status,
+          appliedAt: a.appliedAt
+        }));
+      }
+
+      return userObj;
+    }));
+
+    res.json({ users: usersWithExtra });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
-
 // Get user by ID (admin or self)
+// exports.getUserById = async (req, res) => {
+//   try {
+//     const user = await User.findById(req.params.id).select('-password -resetPasswordOtp -resetPasswordExpiry');
+//     if (!user) return res.status(404).json({ message: 'User not found' });
+//     res.json({ user });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Server error', error: err.message });
+//   }
+// };
+
 exports.getUserById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password -resetPasswordOtp -resetPasswordExpiry');
     if (!user) return res.status(404).json({ message: 'User not found' });
-    res.json({ user });
+
+    const userObj = user.toObject();
+
+    // -----------------------
+    // For recruiter: show assigned jobs and applicant stats
+    // -----------------------
+    if (user.role === 'recruiter') {
+      const jobs = await Job.find({ assignedTo: user._id }).select('_id title type location status');
+      userObj.assignedJobs = jobs || [];
+
+      if (jobs && jobs.length > 0) {
+        const applicants = await Application.find({ job: { $in: jobs.map(j => j._id) } })
+          .populate('candidate', 'name email phone');
+        userObj.totalApplicants = applicants.length;
+        userObj.applicants = applicants.map(a => ({
+          _id: a.candidate?._id,
+          name: a.candidate?.name,
+          email: a.candidate?.email,
+          phone: a.candidate?.phone,
+          appliedAt: a.appliedAt,
+          jobId: a.job
+        }));
+      } else {
+        userObj.totalApplicants = 0;
+        userObj.applicants = [];
+      }
+    }
+
+    // -----------------------
+    // For candidate: show applied jobs
+    // -----------------------
+    if (user.role === 'candidate') {
+      const applications = await Application.find({ candidate: user._id })
+        .populate('job', 'title type location status');
+      userObj.appliedJobs = applications.map(a => ({
+        jobId: a.job?._id,
+        title: a.job?.title,
+        type: a.job?.type,
+        location: a.job?.location,
+        status: a.job?.status,
+        appliedAt: a.appliedAt
+      }));
+    }
+
+    res.json({ user: userObj });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error', error: err.message });
@@ -170,6 +285,40 @@ exports.deleteUser = async (req, res) => {
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json({ message: 'User deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+
+// ============================
+// Get user stats
+// ============================
+exports.getUserStats = async (req, res) => {
+  try {
+    // Total admins
+    const totalAdmins = await User.countDocuments({ role: 'admin' });
+
+    // Total candidates
+    const totalCandidates = await User.countDocuments({ role: 'candidate' });
+
+    // Total recruiters
+    const totalRecruiters = await User.countDocuments({ role: 'recruiter' });
+
+    // Recruiters by team
+    const recruitersByTeam = await User.aggregate([
+      { $match: { role: 'recruiter' } },
+      { $group: { _id: '$team', count: { $sum: 1 } } },
+      { $project: { team: '$_id', count: 1, _id: 0 } }
+    ]);
+
+    res.json({
+      totalAdmins,
+      totalCandidates,
+      totalRecruiters,
+      recruitersByTeam
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error', error: err.message });

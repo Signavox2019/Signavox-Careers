@@ -6,7 +6,7 @@ const ApplicationSchema = new mongoose.Schema({
   resumeSnapshot: String,
   coverLetter: String,
   appliedAt: { type: Date, default: Date.now },
-  
+
   // ✅ Full Recruitment Pipeline
   stage: {
     type: String,
@@ -23,11 +23,19 @@ const ApplicationSchema = new mongoose.Schema({
     default: 'applied'
   },
 
+  // ✅ Offer letter details
+  offerLetterUrl: { type: String, default: null },
+  offerStatus: {
+    type: String,
+    enum: ['pending', 'accepted', 'rejected', 'expired', null],
+    default: null
+  },
+  offerGeneratedAt: { type: Date, default: null },
+
   // Additional details
   statusNotes: String,
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   source: { type: String, default: 'portal' },
-  offerLetterUrl: { type: String, default: null }
 });
 
 module.exports = mongoose.model('Application', ApplicationSchema);

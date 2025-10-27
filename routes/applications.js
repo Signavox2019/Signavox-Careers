@@ -11,7 +11,7 @@ router.post('/apply', auth, upload.single('resume'), applicationController.apply
 // Get all applications (role-based)
 router.get('/', auth, applicationController.getApplications);
 
-// ✅ Get my applications (based on token)
+// Get my applications (based on token)
 router.get('/my', auth, permit('candidate'), applicationController.getMyApplications);
 
 // Admin assigns application to recruiter
@@ -26,12 +26,14 @@ router.delete('/:applicationId', auth, permit('admin', 'candidate'), application
 // Application statistics (admin/recruiter)
 router.get('/stats/overview', auth, permit('admin', 'recruiter'), applicationController.getApplicationStatistics);
 
-// ✅ Manual offer letter generation (optional, admin/recruiter)
+// Manual offer letter generation (admin/recruiter)
 router.post('/:applicationId/offerletter', auth, permit('admin', 'recruiter'), applicationController.generateOfferLetterManually);
 
-// Get my offer letter (candidate/admin/recruiter)
-router.get('/:applicationId/offerletter', auth, applicationController.getOfferLetter);
+// Get my offer letter (ONLY the candidate who owns this application)
+router.get('/:applicationId/offerletter', auth, permit('candidate'), applicationController.getOfferLetter);
 
-
+// Accept or Reject Offer (candidate only — must be logged in)
+router.put('/:applicationId/offer/accept', auth, permit('candidate'), applicationController.acceptOffer);
+router.put('/:applicationId/offer/reject', auth, permit('candidate'), applicationController.rejectOffer);
 
 module.exports = router;

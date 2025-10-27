@@ -5,6 +5,85 @@ const { sendMail } = require('../utils/email'); // Email utility
 const { generateOfferLetterPDF } = require('../utils/generateOfferLetter');
 
 // Apply to a Job
+exports.applyToJob = async (req, res) => {
+  try {
+    const candidate = req.user;
+    const { jobId, coverLetter } = req.body;
+
+    // 🔍 Check if the job exists
+    const job = await Job.findById(jobId);
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+
+    // 🔍 Check if the user has already applied to this job
+    const existingApplication = await Application.findOne({
+      candidate: candidate._id,
+      job: jobId
+    });
+
+    if (existingApplication) {
+      return res.status(400).json({
+        message: 'You have already applied for this job.'
+      });
+    }
+
+    // 📝 Create a new application
+    const application = new Application({
+      candidate: candidate._id,
+      job: jobId,
+      coverLetter
+    });
+
+    await application.save();
+
+    // ✅ Increment applicant count for the job
+    await Job.findByIdAndUpdate(jobId, { $inc: { applicants: 1 } });
+
+    // ✅ Populate candidate & job details for email
+    const populatedApp = await Application.findById(application._id)
+      .populate('candidate', 'firstName lastName email phoneNumber')
+      .populate('job', 'title location type');
+
+    // ================================
+    // ✉️ Send confirmation email
+    // ================================
+    const fullName = `${candidate.firstName} ${candidate.lastName}`;
+    const subject = `Application Confirmation - ${populatedApp.job.title}`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+        <h2 style="color: #0073e6;">Application Received</h2>
+        <p>Dear <strong>${fullName}</strong>,</p>
+        <p>Thank you for applying for the position of <strong>${populatedApp.job.title}</strong> at <strong>Signavox</strong>.</p>
+        <p>Your application has been successfully submitted and is currently under review.</p>
+        <p>We will reach out to you if your profile matches our requirements.</p>
+        <br />
+        <p>Best regards,<br /><strong>Signavox Careers Team</strong></p>
+      </div>
+    `;
+
+    await sendMail({
+      to: candidate.email,
+      subject,
+      html
+    });
+
+    // ✅ Send success response
+    res.status(201).json({
+      message: 'Application submitted successfully',
+      application: populatedApp
+    });
+
+  } catch (error) {
+    console.error('Error in applyToJob:', error);
+    res.status(500).json({
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
 // exports.applyToJob = async (req, res) => {
 //   try {
 //     const candidate = req.user;
@@ -36,33 +115,32 @@ const { generateOfferLetterPDF } = require('../utils/generateOfferLetter');
 
 //     await application.save();
 
-//     const populatedApp = await Application.findById(application._id)
-//       .populate('candidate', 'firstName lastName email phoneNumber')
-//       .populate('job', 'title team');
+//     // Increment applicant count
+//     job.applicants = (job.applicants || 0) + 1;
+//     await job.save();
 
-//     // Send confirmation email
-//     try {
-//       const fullName = `${candidate.firstName} ${candidate.lastName}`;
-//       const subject = `Application Confirmation - ${job.title}`;
-//       const html = `
-//         <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-//           <h2 style="color: #0073e6;">Application Received</h2>
-//           <p>Dear <strong>${fullName}</strong>,</p>
-//           <p>Thank you for applying for the position of <strong>${job.title}</strong> in our <strong>${job.team}</strong> team.</p>
-//           <p>Your application has been successfully submitted and is currently under review.</p>
-//           <p>We will reach out to you if your profile matches our requirements.</p>
-//           <br />
-//           <p>Best regards,<br /><strong>Signavox Careers Team</strong></p>
-//         </div>
-//       `;
-//       await sendMail({ to: candidate.email, subject, html, text: `Dear ${fullName}, your application for ${job.title} has been received.` });
-//     } catch (emailError) {
-//       console.error('Error sending application email:', emailError.message);
-//     }
+//     // Populate job and candidate for response
+//     const populatedApp = await Application.findById(application._id)
+//       .populate({
+//         path: 'candidate',
+//         select: 'name email education experience skills', // basic candidate info
+//       })
+//       .populate({
+//         path: 'job',
+//         select: 'title type location team', // basic job info
+//       });
 
 //     res.status(201).json({
 //       message: 'Applied successfully',
-//       application: populatedApp
+//       application: {
+//         _id: populatedApp._id,
+//         candidate: populatedApp.candidate,
+//         job: populatedApp.job,
+//         stage: populatedApp.stage,
+//         appliedAt: populatedApp.appliedAt,
+//         resumeSnapshot: populatedApp.resumeSnapshot,
+//         coverLetter: populatedApp.coverLetter,
+//       }
 //     });
 
 //   } catch (err) {
@@ -70,83 +148,7 @@ const { generateOfferLetterPDF } = require('../utils/generateOfferLetter');
 //     res.status(500).json({ message: 'Server error', error: err.message });
 //   }
 // };
-// ================================
-// Apply to a Job
-// ================================
-exports.applyToJob = async (req, res) => {
-  try {
-    const candidate = req.user;
-    const { jobId, coverLetter } = req.body;
 
-    const job = await Job.findById(jobId);
-    if (!job) return res.status(404).json({ message: 'Job not found' });
-
-    if (job.status === 'closed') {
-      return res.status(400).json({ message: 'You cannot apply to this job as it is closed' });
-    }
-
-    const existingApplication = await Application.findOne({
-      candidate: candidate._id,
-      job: job._id
-    });
-    if (existingApplication) {
-      return res.status(400).json({ message: 'You have already applied for this job' });
-    }
-
-    const resumeSnapshot = req.file ? req.file.location : candidate.resume;
-
-    const application = new Application({
-      candidate: candidate._id,
-      job: job._id,
-      resumeSnapshot,
-      coverLetter
-    });
-
-    await application.save();
-
-    // ✅ Increment applicant count
-    job.applicants = (job.applicants || 0) + 1;
-    await job.save();
-
-    const populatedApp = await Application.findById(application._id)
-      .populate('candidate', 'firstName lastName email phoneNumber')
-      .populate('job', 'title team applicants'); // include applicants
-
-    // ✅ Send confirmation email
-    try {
-      const fullName = `${candidate.firstName} ${candidate.lastName}`;
-      const subject = `Application Confirmation - ${job.title}`;
-      const html = `
-        <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-          <h2 style="color: #0073e6;">Application Received</h2>
-          <p>Dear <strong>${fullName}</strong>,</p>
-          <p>Thank you for applying for the position of <strong>${job.title}</strong> in our <strong>${job.team}</strong> team.</p>
-          <p>Your application has been successfully submitted and is currently under review.</p>
-          <p>We will reach out to you if your profile matches our requirements.</p>
-          <br />
-          <p>Best regards,<br /><strong>Signavox Careers Team</strong></p>
-        </div>
-      `;
-      await sendMail({
-        to: candidate.email,
-        subject,
-        html,
-        text: `Dear ${fullName}, your application for ${job.title} has been received.`,
-      });
-    } catch (emailError) {
-      console.error('Error sending application email:', emailError.message);
-    }
-
-    res.status(201).json({
-      message: 'Applied successfully',
-      application: populatedApp,
-    });
-
-  } catch (err) {
-    console.error('Error in applyToJob:', err);
-    res.status(500).json({ message: 'Server error', error: err.message });
-  }
-};
 
 // ================================
 // Get Applications (All / Role-based)
@@ -228,60 +230,60 @@ exports.assignToRecruiter = async (req, res) => {
 
 
 // Update Application Stage / Status (Manual Only)
-exports.updateApplicationStatus = async (req, res) => {
-  try {
-    const { applicationId } = req.params;
-    const { stage, statusNotes } = req.body;
+// exports.updateApplicationStatus = async (req, res) => {
+//   try {
+//     const { applicationId } = req.params;
+//     const { stage, statusNotes } = req.body;
 
-    const app = await Application.findById(applicationId)
-      .populate('candidate', 'firstName lastName email lastName')
-      .populate('job', 'title team');
+//     const app = await Application.findById(applicationId)
+//       .populate('candidate', 'firstName lastName email lastName')
+//       .populate('job', 'title team');
 
-    if (!app) return res.status(404).json({ message: 'Application not found' });
+//     if (!app) return res.status(404).json({ message: 'Application not found' });
 
-    if (stage) app.stage = stage;
-    if (statusNotes) app.statusNotes = statusNotes;
-    await app.save();
+//     if (stage) app.stage = stage;
+//     if (statusNotes) app.statusNotes = statusNotes;
+//     await app.save();
 
-    // Send stage update email
-    try {
-      const candidate = app.candidate;
-      const job = app.job;
-      const stageMap = {
-        applied: 'Application Received',
-        resume_shortlisted: 'Resume Shortlisted',
-        screening_test: 'Screening Test',
-        technical_interview: 'Technical Interview Round',
-        hr_interview: 'HR Interview Round',
-        offered: 'Job Offer',
-        rejected: 'Application Rejected',
-        hired: 'Congratulations! You are Hired 🎉'
-      };
+//     // Send stage update email
+//     try {
+//       const candidate = app.candidate;
+//       const job = app.job;
+//       const stageMap = {
+//         applied: 'Application Received',
+//         resume_shortlisted: 'Resume Shortlisted',
+//         screening_test: 'Screening Test',
+//         technical_interview: 'Technical Interview Round',
+//         hr_interview: 'HR Interview Round',
+//         offered: 'Job Offer',
+//         rejected: 'Application Rejected',
+//         hired: 'Congratulations! You are Hired 🎉'
+//       };
 
-      const subject = `Update on your application for ${job.title}`;
-      const html = `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-          <h2 style="color: #0073e6;">${stageMap[stage] || 'Application Update'}</h2>
-          <p>Dear <strong>${candidate.firstName} ${candidate.lastName}</strong>,</p>
-          <p>Your application for the position of <strong>${job.title}</strong> is now at stage: <strong>${stageMap[stage]}</strong>.</p>
-          ${statusNotes ? `<p>Note: ${statusNotes}</p>` : ''}
-          <p>We’ll keep you updated with further progress.</p>
-          <br/>
-          <p>Best regards,<br/><strong>Signavox Careers Team</strong></p>
-        </div>
-      `;
-      await sendMail({ to: candidate.email, subject, html });
-    } catch (emailError) {
-      console.error('Error sending status email:', emailError.message);
-    }
+//       const subject = `Update on your application for ${job.title}`;
+//       const html = `
+//         <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+//           <h2 style="color: #0073e6;">${stageMap[stage] || 'Application Update'}</h2>
+//           <p>Dear <strong>${candidate.firstName} ${candidate.lastName}</strong>,</p>
+//           <p>Your application for the position of <strong>${job.title}</strong> is now at stage: <strong>${stageMap[stage]}</strong>.</p>
+//           ${statusNotes ? `<p>Note: ${statusNotes}</p>` : ''}
+//           <p>We’ll keep you updated with further progress.</p>
+//           <br/>
+//           <p>Best regards,<br/><strong>Signavox Careers Team</strong></p>
+//         </div>
+//       `;
+//       await sendMail({ to: candidate.email, subject, html });
+//     } catch (emailError) {
+//       console.error('Error sending status email:', emailError.message);
+//     }
 
-    res.json({ message: 'Application stage updated successfully', application: app });
+//     res.json({ message: 'Application stage updated successfully', application: app });
 
-  } catch (err) {
-    console.error('Error in updateApplicationStatus:', err);
-    res.status(500).json({ message: 'Server error', error: err.message });
-  }
-};
+//   } catch (err) {
+//     console.error('Error in updateApplicationStatus:', err);
+//     res.status(500).json({ message: 'Server error', error: err.message });
+//   }
+// };
 
 // Update Application Stage / Status (Manual Only)
 exports.updateApplicationStatus = async (req, res) => {
@@ -469,23 +471,100 @@ exports.getApplicationStatistics = async (req, res) => {
 // ================================
 // Generate Offer Letter (Manual Trigger Only)
 // ================================
+// exports.generateOfferLetterManually = async (req, res) => {
+//   try {
+//     const { applicationId } = req.params;
+//     const app = await Application.findById(applicationId)
+//       .populate('candidate', 'firstName lastName email phoneNumber')
+//       .populate('job', 'title team');
+
+//     if (!app) return res.status(404).json({ message: 'Application not found' });
+//     if (app.stage !== 'hired') {
+//       return res.status(400).json({
+//         message: `Offer letter can only be generated when the stage is 'hired'. Current stage: '${app.stage}'.`
+//       });
+//     }
+
+//     if (app.offerLetterUrl) {
+//       return res.status(400).json({
+//         message: 'Offer letter already generated for this candidate.',
+//         offerLetterUrl: app.offerLetterUrl
+//       });
+//     }
+
+//     const candidate = app.candidate;
+//     const job = app.job;
+//     const offerLetterUrl = await generateOfferLetterPDF(candidate, job);
+
+//     app.offerLetterUrl = offerLetterUrl;
+//     app.offerStatus = 'pending';
+//     app.offerGeneratedAt = new Date();
+//     await app.save();
+
+//     // ✅ Email with Accept/Reject buttons
+//     const acceptUrl = `${process.env.FRONTEND_URL}/offer/${app._id}/accept`;
+//     const rejectUrl = `${process.env.FRONTEND_URL}/offer/${app._id}/reject`;
+
+//     const subject = `🎉 Offer Letter for ${job.title}`;
+//     const html = `
+//       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+//         <h2 style="color: #0073e6;">Welcome to Signavox!</h2>
+//         <p>Dear <strong>${candidate.firstName} ${candidate.lastName}</strong>,</p>
+//         <p>We are delighted to offer you the position of <strong>${job.title}</strong> in our <strong>${job.team}</strong> team.</p>
+//         <p>Your official offer letter is ready. You can download it here:</p>
+//         <p><a href="${offerLetterUrl}" style="color: #0073e6;">Download Offer Letter (PDF)</a></p>
+//         <p>Please respond within 7 days by clicking one of the buttons below:</p>
+//         <div style="margin-top: 15px;">
+//           <a href="${acceptUrl}" style="background:#28a745;color:white;padding:10px 20px;border-radius:5px;text-decoration:none;margin-right:10px;">Accept Offer</a>
+//           <a href="${rejectUrl}" style="background:#dc3545;color:white;padding:10px 20px;border-radius:5px;text-decoration:none;">Reject Offer</a>
+//         </div>
+//         <br/>
+//         <p>If you do not respond within 7 days, this offer will expire automatically.</p>
+//         <br/>
+//         <p>Best regards,<br/><strong>Signavox Careers Team</strong></p>
+//       </div>
+//     `;
+//     await sendMail({ to: candidate.email, subject, html });
+
+//     console.log(`✅ Offer letter sent with Accept/Reject links to ${candidate.email}`);
+
+//     res.status(200).json({
+//       message: 'Offer letter generated and emailed successfully',
+//       offerLetterUrl,
+//       application: app
+//     });
+
+//   } catch (error) {
+//     console.error('❌ Error in generateOfferLetterManually:', error.message);
+//     res.status(500).json({ message: 'Server error', error: error.message });
+//   }
+// };
+
+
+
+
+// ================================
+// Get Offer Letter
+// ================================
+
+
+// ================================
+// Generate Offer Letter (Manual Trigger Only)
+// ================================
 exports.generateOfferLetterManually = async (req, res) => {
   try {
     const { applicationId } = req.params;
     const app = await Application.findById(applicationId)
       .populate('candidate', 'firstName lastName email phoneNumber')
-      .populate('job', 'title team');
+      .populate('job', 'title'); // 👈 removed team
 
     if (!app) return res.status(404).json({ message: 'Application not found' });
-
-    // ✅ Restrict generation unless stage === 'hired'
     if (app.stage !== 'hired') {
       return res.status(400).json({
         message: `Offer letter can only be generated when the stage is 'hired'. Current stage: '${app.stage}'.`
       });
     }
 
-    // ✅ If already generated, prevent duplicate creation
     if (app.offerLetterUrl) {
       return res.status(400).json({
         message: 'Offer letter already generated for this candidate.',
@@ -495,34 +574,39 @@ exports.generateOfferLetterManually = async (req, res) => {
 
     const candidate = app.candidate;
     const job = app.job;
-
-    // Generate PDF offer letter (stored in S3 or local)
     const offerLetterUrl = await generateOfferLetterPDF(candidate, job);
 
-    // Save offer letter URL (no stage modification)
     app.offerLetterUrl = offerLetterUrl;
+    app.offerStatus = 'pending';
+    app.offerGeneratedAt = new Date();
     await app.save();
 
-    // Send offer letter email
+    // ✅ Single Link for Accept/Reject (No Buttons)
+    const decisionUrl = `${process.env.FRONTEND_URL}/offer/${app._id}`;
+
     const subject = `🎉 Offer Letter for ${job.title}`;
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2 style="color: #0073e6;">Welcome to Signavox!</h2>
         <p>Dear <strong>${candidate.firstName} ${candidate.lastName}</strong>,</p>
-        <p>We are delighted to offer you the position of <strong>${job.title}</strong> in our <strong>${job.team}</strong> team.</p>
+        <p>We are delighted to offer you the position of <strong>${job.title}</strong> at <strong>Signavox</strong>.</p>
         <p>Your official offer letter is ready. You can download it here:</p>
         <p><a href="${offerLetterUrl}" style="color: #0073e6;">Download Offer Letter (PDF)</a></p>
-        <p>We look forward to having you onboard soon!</p>
+        <p>Please go through the link below to <strong>accept or reject</strong> the offer:</p>
+        <p><a href="${decisionUrl}" style="color: #0073e6;">${decisionUrl}</a></p>
+        <br/>
+        <p>If you do not respond within 7 days, this offer will expire automatically.</p>
         <br/>
         <p>Best regards,<br/><strong>Signavox Careers Team</strong></p>
       </div>
     `;
+
     await sendMail({ to: candidate.email, subject, html });
 
-    console.log(`✅ Offer letter generated (stage: hired) for ${candidate.email}`);
+    console.log(`✅ Offer letter sent with single link to ${candidate.email}`);
 
     res.status(200).json({
-      message: 'Offer letter generated successfully',
+      message: 'Offer letter generated and emailed successfully',
       offerLetterUrl,
       application: app
     });
@@ -533,12 +617,6 @@ exports.generateOfferLetterManually = async (req, res) => {
   }
 };
 
-
-
-
-// ================================
-// Get Offer Letter
-// ================================
 exports.getOfferLetter = async (req, res) => {
   try {
     const { applicationId } = req.params;
@@ -568,6 +646,57 @@ exports.getOfferLetter = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error in getOfferLetter:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+
+// ================================
+// Candidate Accept Offer
+// ================================
+exports.acceptOffer = async (req, res) => {
+  try {
+    const { applicationId } = req.params;
+
+    const app = await Application.findById(applicationId)
+      .populate('candidate', 'firstName lastName email')
+      .populate('job', 'title team');
+
+    if (!app) return res.status(404).json({ message: 'Application not found' });
+    if (app.offerStatus !== 'pending')
+      return res.status(400).json({ message: `Offer already ${app.offerStatus}` });
+
+    app.offerStatus = 'accepted';
+    await app.save();
+
+    res.json({ message: 'Offer accepted successfully', application: app });
+  } catch (error) {
+    console.error('Error in acceptOffer:', error.message);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// ================================
+// Candidate Reject Offer
+// ================================
+exports.rejectOffer = async (req, res) => {
+  try {
+    const { applicationId } = req.params;
+
+    const app = await Application.findById(applicationId)
+      .populate('candidate', 'firstName lastName email')
+      .populate('job', 'title team');
+
+    if (!app) return res.status(404).json({ message: 'Application not found' });
+    if (app.offerStatus !== 'pending')
+      return res.status(400).json({ message: `Offer already ${app.offerStatus}` });
+
+    app.offerStatus = 'rejected';
+    await app.save();
+
+    res.json({ message: 'Offer rejected successfully', application: app });
+  } catch (error) {
+    console.error('Error in rejectOffer:', error.message);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

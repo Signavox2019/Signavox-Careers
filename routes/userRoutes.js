@@ -11,6 +11,9 @@ router.use(auth);
 // Get all users (admin only)
 router.get('/', permit('admin'), userController.getAllUsers);
 
+// User stats (admin only)
+router.get( '/stats',auth,permit('admin'),userController.getUserStats);
+
 // Get user by ID (admin, recruiter, or self)
 router.get('/:id', permit('admin', 'recruiter', 'candidate'), userController.getUserById);
 
@@ -29,5 +32,7 @@ router.put(
 
 // Delete user (admin only)
 router.delete('/:id', permit('admin'), userController.deleteUser);
+
+
 
 module.exports = router;
