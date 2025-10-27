@@ -17,4 +17,7 @@ router.delete('/:id', auth, permit('admin'), jobController.deleteJob);
 // Manually close a job
 router.put('/:id/close', auth, permit('admin'), jobController.closeJob);
 
+// Reopen job (Admin only)
+router.put('/:id/reopen', auth, permit('admin'), jobController.reopenJob);
+
 module.exports = router;

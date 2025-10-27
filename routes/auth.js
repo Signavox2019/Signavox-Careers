@@ -27,4 +27,7 @@ router.post('/create-user', upload.fields([
   { name: 'profileImage', maxCount: 1 }
 ]), auth, permit('admin'), authController.createUserByAdmin);
 
+
+// ✅ Validate Token Route
+router.get('/validate-token', auth, authController.validateToken);
 module.exports = router;

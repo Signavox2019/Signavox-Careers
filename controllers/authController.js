@@ -523,13 +523,45 @@ exports.createUserByAdmin = async (req, res) => {
 // ================================
 // Send OTP
 // ================================
+// exports.sendOTP = async (req, res) => {
+//   try {
+//     const { email } = req.body;
+//     const user = await User.findOne({ email });
+//     if (!user) return res.status(400).json({ message: 'Email not registered' });
+
+//     const { otp, expiry } = generateOTP();
+//     user.resetPasswordOtp = otp;
+//     user.resetPasswordExpiry = expiry;
+//     await user.save();
+
+//     const html = `
+//       <p>Hi ${user.firstName},</p>
+//       <p>Your OTP for SignaVox Careers is:</p>
+//       <h2>${otp}</h2>
+//       <p>This OTP will expire in 10 minutes.</p>
+//     `;
+//     await sendMail({ to: email, subject: 'SignaVox Careers - OTP', html });
+
+//     res.status(200).json({ message: 'OTP sent to your email' });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Server error' });
+//   }
+// };
+
 exports.sendOTP = async (req, res) => {
   try {
     const { email } = req.body;
+    console.log('OTP Request received for:', email);
+
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: 'Email not registered' });
 
+    console.log('User found:', user.email);
+
     const { otp, expiry } = generateOTP();
+    console.log('Generated OTP:', otp, 'Expiry:', expiry);
+
     user.resetPasswordOtp = otp;
     user.resetPasswordExpiry = expiry;
     await user.save();
@@ -540,14 +572,19 @@ exports.sendOTP = async (req, res) => {
       <h2>${otp}</h2>
       <p>This OTP will expire in 10 minutes.</p>
     `;
+    console.log('Sending mail to:', email);
+
     await sendMail({ to: email, subject: 'SignaVox Careers - OTP', html });
 
+    console.log('Mail sent successfully');
     res.status(200).json({ message: 'OTP sent to your email' });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error in sendOTP:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
+
 
 // ================================
 // Reset Password
@@ -572,6 +609,30 @@ exports.resetPassword = async (req, res) => {
     await user.save();
 
     res.status(200).json({ message: 'Password reset successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+
+// ================================
+// Validate Token (Check token validity & return user info)
+// ================================
+exports.validateToken = async (req, res) => {
+  try {
+    // req.user is already attached by auth middleware
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid or expired token' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Token is valid',
+      user
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });

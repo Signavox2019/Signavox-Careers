@@ -32,6 +32,8 @@ router.put(
 
 // Delete user (admin only)
 router.delete('/:id', permit('admin'), userController.deleteUser);
+// Recruiter stats (admin or the same recruiter)
+router.get('/recruiter/:id/stats', auth, permit('admin', 'recruiter'), userController.getRecruiterStats);
 
 
 

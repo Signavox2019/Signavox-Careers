@@ -324,3 +324,125 @@ exports.getUserStats = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
+
+
+// exports.getRecruiterStats = async (req, res) => {
+//   try {
+//     const recruiterId = req.params.id;
+
+//     // Ensure the requested user is a recruiter
+//     const recruiter = await User.findById(recruiterId).select('name role email');
+//     if (!recruiter) return res.status(404).json({ message: 'Recruiter not found' });
+//     if (recruiter.role !== 'recruiter')
+//       return res.status(403).json({ message: 'User is not a recruiter' });
+
+//     // Find all jobs assigned to this recruiter
+//     const jobs = await Job.find({ assignedTo: recruiterId }).select('_id title department location status');
+
+//     // If recruiter has no jobs
+//     if (!jobs.length)
+//       return res.json({
+//         recruiter: {
+//           id: recruiter._id,
+//           name: recruiter.name,
+//           email: recruiter.email
+//         },
+//         totalAssignedJobs: 0,
+//         totalApplicants: 0,
+//         jobs: []
+//       });
+
+//     // For each job, find how many applicants applied
+//     const jobStats = await Promise.all(
+//       jobs.map(async (job) => {
+//         const applicantCount = await Application.countDocuments({ job: job._id });
+//         return {
+//           jobId: job._id,
+//           title: job.title,
+//           department: job.department,
+//           location: job.location,
+//           status: job.status,
+//           applicantCount
+//         };
+//       })
+//     );
+
+//     const totalApplicants = jobStats.reduce((sum, j) => sum + j.applicantCount, 0);
+
+//     res.json({
+//       recruiter: {
+//         id: recruiter._id,
+//         name: recruiter.name,
+//         email: recruiter.email
+//       },
+//       totalAssignedJobs: jobs.length,
+//       totalApplicants,
+//       jobs: jobStats
+//     });
+//   } catch (err) {
+//     console.error('Error in getRecruiterStats:', err);
+//     res.status(500).json({ message: 'Server error', error: err.message });
+//   }
+// };
+
+// ============================
+// Get Recruiter Stats (Full Recruiter Details)
+// ============================
+exports.getRecruiterStats = async (req, res) => {
+  try {
+    const recruiterId = req.params.id;
+
+    // Find recruiter and include full details
+    const recruiter = await User.findById(recruiterId);
+    if (!recruiter) {
+      return res.status(404).json({ message: 'Recruiter not found' });
+    }
+
+    // Ensure user role is recruiter
+    if (recruiter.role !== 'recruiter') {
+      return res.status(403).json({ message: 'User is not a recruiter' });
+    }
+
+    // Find all jobs assigned to this recruiter
+    const jobs = await Job.find({ assignedTo: recruiterId }).select('_id title department location status');
+
+    // If recruiter has no jobs assigned
+    if (!jobs.length) {
+      return res.json({
+        recruiter, // full recruiter details
+        totalAssignedJobs: 0,
+        totalApplicants: 0,
+        jobs: []
+      });
+    }
+
+    // For each job, count number of applicants
+    const jobStats = await Promise.all(
+      jobs.map(async (job) => {
+        const applicantCount = await Application.countDocuments({ job: job._id });
+        return {
+          jobId: job._id,
+          title: job.title,
+          department: job.department,
+          location: job.location,
+          status: job.status,
+          applicantCount
+        };
+      })
+    );
+
+    const totalApplicants = jobStats.reduce((sum, j) => sum + j.applicantCount, 0);
+
+    // Final response
+    res.json({
+      recruiter, // now contains all details like name, email, phone, etc.
+      totalAssignedJobs: jobs.length,
+      totalApplicants,
+      jobs: jobStats
+    });
+  } catch (err) {
+    console.error('Error in getRecruiterStats:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+

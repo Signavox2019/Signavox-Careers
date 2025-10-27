@@ -568,7 +568,7 @@ exports.generateOfferLetterManually = async (req, res) => {
     if (app.offerLetterUrl) {
       return res.status(400).json({
         message: 'Offer letter already generated for this candidate.',
-        offerLetterUrl: app.offerLetterUrl
+        // offerLetterUrl: app.offerLetterUrl
       });
     }
 

@@ -503,3 +503,52 @@ exports.getJobStats = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
+
+// ============================
+// Reopen Job (Admin Only)
+// ============================
+exports.reopenJob = async (req, res) => {
+  try {
+    const jobId = req.params.id;
+
+    // Find the job
+    const job = await Job.findById(jobId)
+      .populate('assignedTo', 'name email role') // populate recruiter details
+      .populate('createdBy', 'name email role'); // populate admin who created it
+
+    if (!job) return res.status(404).json({ message: 'Job not found' });
+
+    // Check if already open
+    if (job.status === 'open') {
+      return res.status(400).json({ message: 'Job is already open.' });
+    }
+
+    // Check if closing date has already passed
+    const today = new Date();
+    const closingDate = new Date(job.closingDate);
+
+    if (closingDate < today) {
+      return res.status(400).json({
+        message: 'Cannot reopen this job. The closing date has already passed.'
+      });
+    }
+
+    // ✅ Reopen the job (no date changes)
+    job.status = 'open';
+    await job.save();
+
+    // Fetch updated full job details
+    const updatedJob = await Job.findById(jobId)
+      .populate('assignedTo', 'name email role')
+      .populate('createdBy', 'name email role');
+
+    res.json({
+      message: 'Job reopened successfully.',
+      job: updatedJob
+    });
+  } catch (err) {
+    console.error('Error reopening job:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
