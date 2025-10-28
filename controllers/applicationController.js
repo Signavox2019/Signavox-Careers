@@ -540,14 +540,6 @@ exports.getApplicationStatistics = async (req, res) => {
 //   }
 // };
 
-
-
-
-// ================================
-// Get Offer Letter
-// ================================
-
-
 // ================================
 // Generate Offer Letter (Manual Trigger Only)
 // ================================
@@ -617,6 +609,9 @@ exports.generateOfferLetterManually = async (req, res) => {
   }
 };
 
+// ================================
+// Get Offer Letter
+// ================================
 exports.getOfferLetter = async (req, res) => {
   try {
     const { applicationId } = req.params;

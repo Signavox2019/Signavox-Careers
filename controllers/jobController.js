@@ -469,7 +469,7 @@ exports.closeJob = async (req, res) => {
     job.status = 'closed';
     await job.save();
 
-    res.json({ message: 'Job manually closed successfully', job });
+    res.json({ message: 'Job closed successfully', job });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error', error: err.message });
