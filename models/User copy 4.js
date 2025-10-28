@@ -29,14 +29,6 @@ const SocialLinksSchema = new mongoose.Schema({
   github: String
 }, { _id: false });
 
-// ✅ New Certification Schema (all optional)
-const CertificationSchema = new mongoose.Schema({
-  certificationName: String,
-  issuedBy: String,
-  certificateUrl: String,
-  description: String
-}, { _id: false });
-
 // =====================
 // Main User Schema
 // =====================
@@ -85,9 +77,6 @@ const UserSchema = new mongoose.Schema({
     }
   },
 
-  // ✅ Added certifications field (optional)
-  certifications: [CertificationSchema],
-
   // New field to store gap analysis
   careerGapFlags: [String],
 
@@ -111,9 +100,10 @@ UserSchema.pre('save', function (next) {
 
     for (let i = 0; i < sortedEdu.length - 1; i++) {
       const current = sortedEdu[i];
-      const nextEdu = sortedEdu[i + 1];
-      const gap = nextEdu.passedYear - current.passedYear;
+      const next = sortedEdu[i + 1];
+      const gap = next.passedYear - current.passedYear;
 
+      // Define expected durations based on known transitions
       const expectedDurations = {
         '10th-12th': 2,
         '12th-Degree': 3,
@@ -123,13 +113,13 @@ UserSchema.pre('save', function (next) {
         'Degree-MSC': 2
       };
 
-      const key = `${current.programOrDegree}-${nextEdu.programOrDegree}`;
+      const key = `${current.programOrDegree}-${next.programOrDegree}`;
       const expected = expectedDurations[key] || null;
 
       if (expected && gap > expected) {
         const extra = gap - expected;
         flags.push(
-          `⚠️ There is a ${extra}-year career gap between ${current.programOrDegree} (${current.passedYear}) and ${nextEdu.programOrDegree} (${nextEdu.passedYear}).`
+          `⚠️ There is a ${extra}-year career gap between ${current.programOrDegree} (${current.passedYear}) and ${next.programOrDegree} (${next.passedYear}).`
         );
       }
     }

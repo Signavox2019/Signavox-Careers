@@ -145,71 +145,39 @@ exports.getUserById = async (req, res) => {
 //   try {
 //     const updateData = { ...req.body };
 
-//     // ----------------------------
-//     // Handle JSON fields from multipart/form-data
-//     // ----------------------------
-//     if (updateData.education && typeof updateData.education === 'string') {
-//       try {
-//         updateData.education = JSON.parse(updateData.education);
-//       } catch (err) {
-//         return res.status(400).json({ message: 'Invalid education JSON format' });
+//     // Parse JSON fields
+//     const jsonFields = ['education', 'experiences', 'skills', 'socialLinks'];
+//     for (const field of jsonFields) {
+//       if (updateData[field] && typeof updateData[field] === 'string') {
+//         try { updateData[field] = JSON.parse(updateData[field]); }
+//         catch (err) {
+//           if (field === 'skills') {
+//             updateData[field] = updateData[field].split(',').map(s => s.trim());
+//           } else {
+//             return res.status(400).json({ message: `Invalid JSON format for ${field}` });
+//           }
+//         }
 //       }
 //     }
 
-//     if (updateData.experiences && typeof updateData.experiences === 'string') {
-//       try {
-//         updateData.experiences = JSON.parse(updateData.experiences);
-//       } catch (err) {
-//         return res.status(400).json({ message: 'Invalid experiences JSON format' });
-//       }
-//     }
-
-//     if (updateData.skills && typeof updateData.skills === 'string') {
-//       try {
-//         updateData.skills = JSON.parse(updateData.skills);
-//       } catch {
-//         updateData.skills = updateData.skills.split(',').map(s => s.trim());
-//       }
-//     }
-
-//     // ----------------------------
 //     // Handle file uploads
-//     // ----------------------------
-//     if (req.file) {
-//       if (req.file.fieldname === 'resume') updateData.resume = req.file.location;
-//       if (req.file.fieldname === 'profileImage') updateData.profileImage = req.file.location;
-//     }
-
 //     if (req.files) {
 //       if (req.files['resume']) updateData.resume = req.files['resume'][0].location;
 //       if (req.files['profileImage']) updateData.profileImage = req.files['profileImage'][0].location;
 //     }
 
-//     // ----------------------------
-//     // Recalculate name if name parts changed
-//     // ----------------------------
+//     // Recalculate name if needed
 //     if (updateData.firstName || updateData.middleName || updateData.lastName) {
-//       const parts = [
-//         updateData.firstName || '',
-//         updateData.middleName || '',
-//         updateData.lastName || ''
-//       ].filter(Boolean);
+//       const parts = [updateData.firstName, updateData.middleName, updateData.lastName].filter(Boolean);
 //       updateData.name = parts.join(' ');
 //     }
 
-//     // ----------------------------
-//     // Fetch user and update fields
-//     // ----------------------------
 //     const user = await User.findById(req.params.id);
 //     if (!user) return res.status(404).json({ message: 'User not found' });
 
-//     // Update fields
-//     for (const key in updateData) {
-//       user[key] = updateData[key];
-//     }
-
-//     // Save user to trigger pre-save hooks (careerGapFlags recalculation)
-//     await user.save();
+//     // Update all fields dynamically
+//     Object.assign(user, updateData);
+//     await user.save(); // triggers pre-save hooks for gap flags
 
 //     const userObj = user.toObject();
 //     delete userObj.password;
@@ -219,9 +187,6 @@ exports.getUserById = async (req, res) => {
 //     res.json({ message: 'User updated successfully', user: userObj });
 //   } catch (err) {
 //     console.error(err);
-//     if (err.name === 'CastError' || err.name === 'ObjectParameterError') {
-//       return res.status(400).json({ message: 'Invalid data format', error: err.message });
-//     }
 //     res.status(500).json({ message: 'Server error', error: err.message });
 //   }
 // };
@@ -230,12 +195,13 @@ exports.updateUser = async (req, res) => {
   try {
     const updateData = { ...req.body };
 
-    // Parse JSON fields
-    const jsonFields = ['education', 'experiences', 'skills', 'socialLinks'];
+    // Parse JSON fields (added certifications)
+    const jsonFields = ['education', 'experiences', 'skills', 'socialLinks', 'certifications'];
     for (const field of jsonFields) {
       if (updateData[field] && typeof updateData[field] === 'string') {
-        try { updateData[field] = JSON.parse(updateData[field]); }
-        catch (err) {
+        try {
+          updateData[field] = JSON.parse(updateData[field]);
+        } catch (err) {
           if (field === 'skills') {
             updateData[field] = updateData[field].split(',').map(s => s.trim());
           } else {
@@ -247,11 +213,15 @@ exports.updateUser = async (req, res) => {
 
     // Handle file uploads
     if (req.files) {
-      if (req.files['resume']) updateData.resume = req.files['resume'][0].location;
-      if (req.files['profileImage']) updateData.profileImage = req.files['profileImage'][0].location;
+      if (req.files['resume'])
+        updateData.resume =
+          req.files['resume'][0].location || req.files['resume'][0].path;
+      if (req.files['profileImage'])
+        updateData.profileImage =
+          req.files['profileImage'][0].location || req.files['profileImage'][0].path;
     }
 
-    // Recalculate name if needed
+    // Recalculate name if name parts are updated
     if (updateData.firstName || updateData.middleName || updateData.lastName) {
       const parts = [updateData.firstName, updateData.middleName, updateData.lastName].filter(Boolean);
       updateData.name = parts.join(' ');
@@ -260,9 +230,9 @@ exports.updateUser = async (req, res) => {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Update all fields dynamically
+    // Dynamically apply updates
     Object.assign(user, updateData);
-    await user.save(); // triggers pre-save hooks for gap flags
+    await user.save(); // triggers pre-save hooks (like gap flags)
 
     const userObj = user.toObject();
     delete userObj.password;
@@ -275,6 +245,7 @@ exports.updateUser = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
+
 
 
 
@@ -443,6 +414,135 @@ exports.getRecruiterStats = async (req, res) => {
   } catch (err) {
     console.error('Error in getRecruiterStats:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+
+// =======================================
+// GET MY PROFILE  (for any logged-in user)
+// =======================================
+exports.getMyProfile = async (req, res) => {
+  try {
+    // req.user is set by your auth middleware
+    const user = await User.findById(req.user._id).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({
+      message: 'Profile fetched successfully',
+      user,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      message: 'Server error',
+      error: err.message,
+    });
+  }
+};
+
+
+// ==========================================
+// Update My Profile (based on token)
+// ==========================================
+// exports.updateMyProfile = async (req, res) => {
+//   try {
+//     let updates = { ...req.body };
+
+//     // ✅ Handle uploaded files (profile image and resume)
+//     if (req.files) {
+//       if (req.files.profileImage && req.files.profileImage[0]) {
+//         updates.profileImage = `/uploads/${req.files.profileImage[0].filename}`;
+//       }
+//       if (req.files.resume && req.files.resume[0]) {
+//         updates.resume = `/uploads/${req.files.resume[0].filename}`;
+//       }
+//     }
+
+//     // ✅ Update the user document
+//     const updatedUser = await User.findByIdAndUpdate(
+//       req.user._id,
+//       { $set: updates },
+//       { new: true }
+//     ).select('-password');
+
+//     if (!updatedUser) {
+//       return res.status(404).json({ message: 'User not found' });
+//     }
+
+//     res.status(200).json({
+//       message: 'Profile updated successfully',
+//       user: updatedUser,
+//     });
+//   } catch (err) {
+//     console.error('Error in updateMyProfile:', err);
+//     res.status(500).json({
+//       message: 'Server error',
+//       error: err.message,
+//     });
+//   }
+// };
+
+exports.updateMyProfile = async (req, res) => {
+  try {
+    const updateData = { ...req.body };
+
+    // ✅ Parse JSON/string fields
+    const jsonFields = ['education', 'experiences', 'skills', 'socialLinks', 'certifications'];
+    for (const field of jsonFields) {
+      if (updateData[field] && typeof updateData[field] === 'string') {
+        try {
+          updateData[field] = JSON.parse(updateData[field]);
+        } catch (err) {
+          if (field === 'skills') {
+            updateData[field] = updateData[field].split(',').map(s => s.trim());
+          } else {
+            return res.status(400).json({ message: `Invalid JSON format for ${field}` });
+          }
+        }
+      }
+    }
+
+    // ✅ Handle file uploads (local paths)
+    if (req.files) {
+      if (req.files['profileImage'] && req.files['profileImage'][0]) {
+        updateData.profileImage = `/uploads/${req.files['profileImage'][0].filename}`;
+      }
+      if (req.files['resume'] && req.files['resume'][0]) {
+        updateData.resume = `/uploads/${req.files['resume'][0].filename}`;
+      }
+    }
+
+    // ✅ Recalculate full name if name parts are updated
+    if (updateData.firstName || updateData.middleName || updateData.lastName) {
+      const parts = [updateData.firstName, updateData.middleName, updateData.lastName].filter(Boolean);
+      updateData.name = parts.join(' ');
+    }
+
+    // ✅ Update current logged-in user
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    Object.assign(user, updateData);
+    await user.save();
+
+    const userObj = user.toObject();
+    delete userObj.password;
+    delete userObj.resetPasswordOtp;
+    delete userObj.resetPasswordExpiry;
+
+    res.status(200).json({
+      message: 'Profile updated successfully',
+      user: userObj
+    });
+  } catch (err) {
+    console.error('Error in updateMyProfile:', err);
+    res.status(500).json({
+      message: 'Server error',
+      error: err.message,
+    });
   }
 };
 

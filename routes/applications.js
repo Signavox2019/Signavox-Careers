@@ -36,4 +36,13 @@ router.get('/:applicationId/offerletter', auth, permit('candidate'), application
 router.put('/:applicationId/offer/accept', auth, permit('candidate'), applicationController.acceptOffer);
 router.put('/:applicationId/offer/reject', auth, permit('candidate'), applicationController.rejectOffer);
 
+
+// Withdraw an Application (within 24 hours)
+router.put('/:id/withdraw', auth, applicationController.withdrawApplication);
+
+// Get stage statuses for a specific application
+router.get('/:id/stages', auth, applicationController.getApplicationStageStatus);
+
+
+
 module.exports = router;
