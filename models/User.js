@@ -34,7 +34,9 @@ const CertificationSchema = new mongoose.Schema({
   certificationName: String,
   issuedBy: String,
   certificateUrl: String,
-  description: String
+  description: String,
+  issuedDate: { type: Date, required: true }, 
+  expiryDate: Date
 }, { _id: false });
 
 // =====================
