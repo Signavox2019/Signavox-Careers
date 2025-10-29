@@ -3,7 +3,10 @@ const mongoose = require('mongoose');
 // =====================
 // Sub-schemas
 // =====================
+
+// Education Schema
 const EducationSchema = new mongoose.Schema({
+  _id: { type: mongoose.Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
   programOrDegree: { 
     type: String, 
     enum: ['10th', '12th', 'Diploma', 'Degree', 'BTech', 'MTech', 'MSC', 'Other'], 
@@ -14,30 +17,34 @@ const EducationSchema = new mongoose.Schema({
   boardOrUniversity: { type: String, required: true },
   passedYear: { type: Number, required: true },
   percentageOrCGPA: String
-}, { _id: false });
+});
 
+// Experience Schema
 const ExperienceSchema = new mongoose.Schema({
+  _id: { type: mongoose.Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
   companyName: { type: String, required: true },
   designation: { type: String, required: true },
   startDate: { type: Date, required: true },
   endDate: { type: Date },
   responsibilities: { type: String }
-}, { _id: false });
+});
 
+// Social Links Schema
 const SocialLinksSchema = new mongoose.Schema({
   linkedin: String,
   github: String
 }, { _id: false });
 
-// ✅ New Certification Schema (all optional)
+// Certification Schema
 const CertificationSchema = new mongoose.Schema({
+  _id: { type: mongoose.Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
   certificationName: String,
   issuedBy: String,
   certificateUrl: String,
   description: String,
-  issuedDate: { type: Date, required: true }, 
+  issuedDate: { type: Date, required: true },
   expiryDate: Date
-}, { _id: false });
+});
 
 // =====================
 // Main User Schema
@@ -87,10 +94,7 @@ const UserSchema = new mongoose.Schema({
     }
   },
 
-  // ✅ Added certifications field (optional)
   certifications: [CertificationSchema],
-
-  // New field to store gap analysis
   careerGapFlags: [String],
 
   password: { type: String, required: true },
@@ -100,13 +104,14 @@ const UserSchema = new mongoose.Schema({
 });
 
 // =====================
-// Compute full name
+// Hooks
 // =====================
 UserSchema.pre('save', function (next) {
+  // Full name
   const parts = [this.firstName, this.middleName, this.lastName].filter(Boolean);
   this.name = parts.join(' ');
 
-  // Automatically compute career gap flags before saving
+  // Career gap logic
   if (this.education && this.education.length > 0) {
     const sortedEdu = [...this.education].sort((a, b) => a.passedYear - b.passedYear);
     const flags = [];
@@ -142,7 +147,7 @@ UserSchema.pre('save', function (next) {
   next();
 });
 
-// Update hook (if education is modified)
+// Update hook for full name
 UserSchema.pre('findOneAndUpdate', function (next) {
   const update = this.getUpdate();
   if (update.firstName || update.middleName || update.lastName) {

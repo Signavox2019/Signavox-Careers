@@ -9,6 +9,7 @@ const userRoutes = require('./routes/userRoutes');
 const jobsRoutes = require('./routes/jobs');
 const applicationsRoutes = require('./routes/applications');
 const auth = require('./routes/auth');
+const userDetailsRoutes = require('./routes/userDetailsRoutes');
 require('./cron/offerExpiryCron');
 
 const app = express();
@@ -33,6 +34,7 @@ app.use('/api/auth', auth);
 app.use('/api/jobs', jobsRoutes);
 app.use('/api/applications', applicationsRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/user-details', userDetailsRoutes);
 
 // Test route
 app.get('/', (req, res) => res.send('SignaVox Careers API'));

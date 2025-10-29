@@ -50,9 +50,4 @@ router.delete('/:id', permit('admin'), userController.deleteUser);
 // Recruiter stats (admin or the same recruiter)
 router.get('/recruiter/:id/stats', auth, permit('admin', 'recruiter'), userController.getRecruiterStats);
 
-
-
-
-
-
 module.exports = router;
