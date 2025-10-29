@@ -246,10 +246,6 @@ exports.updateUser = async (req, res) => {
   }
 };
 
-
-
-
-
 // Delete user
 exports.deleteUser = async (req, res) => {
   try {
