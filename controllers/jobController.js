@@ -13,9 +13,8 @@ const autoCloseExpiredJobs = async () => {
   );
 };
 
-// ==========================
 // Create Job (Admin only)
-// ==========================
+
 // exports.createJob = async (req, res) => {
 //   upload.array('document')(req, res, async function (err) {
 //     if (err) return res.status(400).json({ message: 'Upload error', error: err.message });
@@ -50,6 +49,23 @@ const autoCloseExpiredJobs = async () => {
 //         }));
 //       }
 
+//       // ✅ Validate closing date
+//       if (req.body.closingDate) {
+//         const closingDate = new Date(req.body.closingDate);
+//         const today = new Date();
+
+//         // Remove time part from comparison
+//         today.setHours(0, 0, 0, 0);
+//         closingDate.setHours(0, 0, 0, 0);
+
+//         if (closingDate < today) {
+//           return res.status(400).json({
+//             message: `Invalid closing date. The closing date (${req.body.closingDate}) cannot be in the past.`
+//           });
+//         }
+//       }
+
+//       // ✅ Proceed with job creation
 //       const job = new Job({
 //         title: req.body.title,
 //         location: req.body.location,
@@ -76,7 +92,6 @@ const autoCloseExpiredJobs = async () => {
 //     }
 //   });
 // };
-
 
 exports.createJob = async (req, res) => {
   upload.array('document')(req, res, async function (err) {
@@ -112,15 +127,18 @@ exports.createJob = async (req, res) => {
         }));
       }
 
-      // ✅ Validate closing date
-      if (req.body.closingDate) {
-        const closingDate = new Date(req.body.closingDate);
-        const today = new Date();
+      // ✅ Parse DD-MM-YYYY safely
+      let closingDateInput = req.body.closingDate;
+      if (closingDateInput && /^\d{2}-\d{2}-\d{4}$/.test(closingDateInput)) {
+        const [day, month, year] = closingDateInput.split('-');
+        closingDateInput = `${year}-${month}-${day}`;
+      }
 
-        // Remove time part from comparison
+      if (closingDateInput) {
+        const closingDate = new Date(closingDateInput);
+        const today = new Date();
         today.setHours(0, 0, 0, 0);
         closingDate.setHours(0, 0, 0, 0);
-
         if (closingDate < today) {
           return res.status(400).json({
             message: `Invalid closing date. The closing date (${req.body.closingDate}) cannot be in the past.`
@@ -134,7 +152,7 @@ exports.createJob = async (req, res) => {
         location: req.body.location,
         type: req.body.type,
         experience: req.body.experience,
-        closingDate: req.body.closingDate,
+        closingDate: closingDateInput,
         jobDescription,
         hiringWorkflow,
         eligibilityCriteria,
@@ -155,6 +173,7 @@ exports.createJob = async (req, res) => {
     }
   });
 };
+
 
 
 // ==========================

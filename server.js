@@ -11,6 +11,7 @@ const applicationsRoutes = require('./routes/applications');
 const auth = require('./routes/auth');
 const userDetailsRoutes = require('./routes/userDetailsRoutes');
 require('./cron/offerExpiryCron');
+const eventRoutes = require('./routes/eventRoutes');
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use('/api/jobs', jobsRoutes);
 app.use('/api/applications', applicationsRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/user-details', userDetailsRoutes);
+app.use('/api/events', eventRoutes);
 
 // Test route
 app.get('/', (req, res) => res.send('SignaVox Careers API'));

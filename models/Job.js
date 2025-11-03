@@ -3,10 +3,10 @@ const mongoose = require('mongoose');
 const JobSchema = new mongoose.Schema({
   title: { type: String, required: true },
   location: { type: String, required: true },
-  type: { 
-    type: String, 
-    enum: ['Full-Time', 'Part-Time', 'Internship', 'Contract', 'Remote'], 
-    default: 'Full-Time' 
+  type: {
+    type: String,
+    enum: ['Full-Time', 'Part-Time', 'Internship', 'Contract', 'Remote'],
+    default: 'Full-Time'
   },
   experience: { type: String },
   postedDate: { type: String, default: () => new Date().toISOString() },
@@ -14,49 +14,24 @@ const JobSchema = new mongoose.Schema({
   applicants: { type: Number, default: 0 },
   status: { type: String, enum: ['open', 'closed', 'paused'], default: 'open' },
 
-  // Reference to admin who created the job
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-
-  // ✅ Recruiter assigned to this job
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
   jobDescription: {
     category: { type: String },
-
-    // ✅ Added enum for position level
-    positionLevel: { 
+    positionLevel: {
       type: String,
-      enum: [
-        'Intern',
-        'Fresher',
-        'Junior',
-        'Mid-Level',
-        'Senior',
-        // 'Lead',
-        'Manager'
-      ]
+      enum: ['Intern', 'Fresher', 'Junior', 'Mid-Level', 'Senior', 'Manager']
     },
-
-    // ✅ Updated CTC as min/max
     ctc: {
       min: { type: String },
       max: { type: String }
     },
-
-    // ✅ Added enum for shift types
-    shift: { 
+    shift: {
       type: String,
-      enum: [
-        'Day Shift',
-        'Night Shift',
-        'Rotational Shift',
-        'Flexible',
-        'Hybrid',
-        'Remote'
-      ],
+      enum: ['Day Shift', 'Night Shift', 'Rotational Shift', 'Flexible', 'Hybrid', 'Remote'],
       default: 'Day Shift'
     },
-
     openings: { type: Number, default: 1 },
     aboutRole: { type: String },
     responsibilities: [{ type: String }],
@@ -77,11 +52,25 @@ const JobSchema = new mongoose.Schema({
     }
   },
 
-  // ✅ Simplified hiring workflow (removed duration, icon, timeline)
+  // ✅ Hiring workflow now validated with enum but flexible
   hiringWorkflow: {
     stages: [
       {
-        stage: { type: String },
+        stage: {
+          type: String,
+          enum: [
+            'applied',
+            'resume_shortlisted',
+            'screening_test',
+            'group_discussion',
+            'technical_interview',
+            'manager_interview',
+            'hr_interview',
+            'offered',
+            'hired',
+            'rejected'
+          ]
+        },
         description: { type: String }
       }
     ]
@@ -92,7 +81,6 @@ const JobSchema = new mongoose.Schema({
     preferred: [{ type: String }],
     skills: [{ type: String }]
   }
-
 }, { timestamps: true });
 
 module.exports = mongoose.model('Job', JobSchema);

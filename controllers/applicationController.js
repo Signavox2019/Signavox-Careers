@@ -5,6 +5,7 @@ const { sendMail } = require('../utils/email'); // Email utility
 const { generateOfferLetterPDF } = require('../utils/generateOfferLetter');
 
 // Apply to a Job
+
 // exports.applyToJob = async (req, res) => {
 //   try {
 //     const candidate = req.user;
@@ -33,6 +34,17 @@ const { generateOfferLetterPDF } = require('../utils/generateOfferLetter');
 //       candidate: candidate._id,
 //       job: jobId,
 //       coverLetter
+//     });
+
+//     // ✅ Set updatedAt for the "applied" stage
+//     application.stageWiseStatus = application.stageWiseStatus.map(stage => {
+//       if (stage.stageName === 'applied') {
+//         return {
+//           ...stage.toObject?.() || stage,
+//           updatedAt: new Date()
+//         };
+//       }
+//       return stage;
 //     });
 
 //     await application.save();
@@ -84,63 +96,139 @@ const { generateOfferLetterPDF } = require('../utils/generateOfferLetter');
 //   }
 // };
 
+// exports.applyToJob = async (req, res) => {
+//   try {
+//     const candidate = req.user;
+//     const { jobId, coverLetter } = req.body;
+
+//     const job = await Job.findById(jobId);
+//     if (!job) return res.status(404).json({ message: 'Job not found' });
+
+//     const existingApplication = await Application.findOne({
+//       candidate: candidate._id,
+//       job: jobId
+//     });
+//     if (existingApplication)
+//       return res.status(400).json({ message: 'You have already applied for this job.' });
+
+//     // ✅ Build stageWiseStatus dynamically from job.hiringWorkflow.stages
+//     const stageWiseStatus = [];
+//     const definedStages = job.hiringWorkflow?.stages?.length ? job.hiringWorkflow.stages : [];
+
+//     definedStages.forEach((stg, index) => {
+//       stageWiseStatus.push({
+//         stageName: stg.stage,
+//         status: index === 0 ? 'completed' : 'pending',
+//         action: index === 0 ? 'accept' : null,
+//         updatedAt: index === 0 ? new Date() : null
+//       });
+//     });
+
+//     // 📝 Create Application
+//     const application = new Application({
+//       candidate: candidate._id,
+//       job: jobId,
+//       coverLetter,
+//       stage: definedStages[0]?.stage || 'applied',
+//       stageWiseStatus
+//     });
+
+//     await application.save();
+//     await Job.findByIdAndUpdate(jobId, { $inc: { applicants: 1 } });
+
+//     const populatedApp = await Application.findById(application._id)
+//       .populate('candidate', 'firstName lastName email phoneNumber')
+//       .populate('job', 'title location type');
+
+//     // ✉️ Email confirmation
+//     const fullName = `${candidate.firstName} ${candidate.lastName}`;
+//     const subject = `Application Confirmation - ${populatedApp.job.title}`;
+//     const html = `
+//       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+//         <h2 style="color: #0073e6;">Application Received</h2>
+//         <p>Dear <strong>${fullName}</strong>,</p>
+//         <p>Thank you for applying for the position of <strong>${populatedApp.job.title}</strong> at <strong>Signavox</strong>.</p>
+//         <p>Your application has been successfully submitted and is currently under review.</p>
+//         <p>We will reach out to you if your profile matches our requirements.</p>
+//         <br />
+//         <p>Best regards,<br /><strong>Signavox Careers Team</strong></p>
+//       </div>
+//     `;
+//     await sendMail({ to: candidate.email, subject, html });
+
+//     res.status(201).json({
+//       message: 'Application submitted successfully',
+//       application: populatedApp
+//     });
+//   } catch (error) {
+//     console.error('Error in applyToJob:', error);
+//     res.status(500).json({ message: 'Server error', error: error.message });
+//   }
+// };
+
 exports.applyToJob = async (req, res) => {
   try {
     const candidate = req.user;
     const { jobId, coverLetter } = req.body;
 
-    // 🔍 Check if the job exists
     const job = await Job.findById(jobId);
-    if (!job) {
-      return res.status(404).json({ message: 'Job not found' });
-    }
+    if (!job) return res.status(404).json({ message: 'Job not found' });
 
-    // 🔍 Check if the user has already applied to this job
+    // ✅ Prevent duplicate applications
     const existingApplication = await Application.findOne({
       candidate: candidate._id,
       job: jobId
     });
+    if (existingApplication)
+      return res.status(400).json({ message: 'You have already applied for this job.' });
 
-    if (existingApplication) {
-      return res.status(400).json({
-        message: 'You have already applied for this job.'
+    // ✅ Build stageWiseStatus dynamically — all pending initially
+    const stageWiseStatus = [];
+
+    const definedStages = job.hiringWorkflow?.stages?.length
+      ? job.hiringWorkflow.stages
+      : [];
+
+    // ✅ Add 'applied' as the default starting stage
+    stageWiseStatus.push({
+      stageName: 'applied',
+      status: 'completed', // user has just applied
+      action: 'accept', // automatically accepted into the process
+      updatedAt: new Date()
+    });
+
+    // ✅ Add the rest of the workflow stages as pending
+    definedStages.forEach(stg => {
+      stageWiseStatus.push({
+        stageName: stg.stage,
+        status: 'pending',
+        action: null,
+        updatedAt: null
       });
-    }
+    });
 
-    // 📝 Create a new application
+    // 📝 Create new Application document
     const application = new Application({
       candidate: candidate._id,
       job: jobId,
-      coverLetter
-    });
-
-    // ✅ Set updatedAt for the "applied" stage
-    application.stageWiseStatus = application.stageWiseStatus.map(stage => {
-      if (stage.stageName === 'applied') {
-        return {
-          ...stage.toObject?.() || stage,
-          updatedAt: new Date()
-        };
-      }
-      return stage;
+      coverLetter,
+      stage: 'applied', // ✅ always start with applied
+      stageWiseStatus
     });
 
     await application.save();
 
-    // ✅ Increment applicant count for the job
+    // Increment applicant count for the job
     await Job.findByIdAndUpdate(jobId, { $inc: { applicants: 1 } });
 
-    // ✅ Populate candidate & job details for email
+    // ✅ Populate for response
     const populatedApp = await Application.findById(application._id)
       .populate('candidate', 'firstName lastName email phoneNumber')
       .populate('job', 'title location type');
 
-    // ================================
     // ✉️ Send confirmation email
-    // ================================
     const fullName = `${candidate.firstName} ${candidate.lastName}`;
     const subject = `Application Confirmation - ${populatedApp.job.title}`;
-
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <h2 style="color: #0073e6;">Application Received</h2>
@@ -152,98 +240,21 @@ exports.applyToJob = async (req, res) => {
         <p>Best regards,<br /><strong>Signavox Careers Team</strong></p>
       </div>
     `;
+    await sendMail({ to: candidate.email, subject, html });
 
-    await sendMail({
-      to: candidate.email,
-      subject,
-      html
-    });
-
-    // ✅ Send success response
     res.status(201).json({
       message: 'Application submitted successfully',
       application: populatedApp
     });
 
   } catch (error) {
-    console.error('Error in applyToJob:', error);
-    res.status(500).json({
-      message: 'Server error',
-      error: error.message
-    });
+    console.error('❌ Error in applyToJob:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-
-// exports.applyToJob = async (req, res) => {
-//   try {
-//     const candidate = req.user;
-//     const { jobId, coverLetter } = req.body;
-
-//     const job = await Job.findById(jobId);
-//     if (!job) return res.status(404).json({ message: 'Job not found' });
-
-//     if (job.status === 'closed') {
-//       return res.status(400).json({ message: 'You cannot apply to this job as it is closed' });
-//     }
-
-//     const existingApplication = await Application.findOne({
-//       candidate: candidate._id,
-//       job: job._id
-//     });
-//     if (existingApplication) {
-//       return res.status(400).json({ message: 'You have already applied for this job' });
-//     }
-
-//     const resumeSnapshot = req.file ? req.file.location : candidate.resume;
-
-//     const application = new Application({
-//       candidate: candidate._id,
-//       job: job._id,
-//       resumeSnapshot,
-//       coverLetter
-//     });
-
-//     await application.save();
-
-//     // Increment applicant count
-//     job.applicants = (job.applicants || 0) + 1;
-//     await job.save();
-
-//     // Populate job and candidate for response
-//     const populatedApp = await Application.findById(application._id)
-//       .populate({
-//         path: 'candidate',
-//         select: 'name email education experience skills', // basic candidate info
-//       })
-//       .populate({
-//         path: 'job',
-//         select: 'title type location team', // basic job info
-//       });
-
-//     res.status(201).json({
-//       message: 'Applied successfully',
-//       application: {
-//         _id: populatedApp._id,
-//         candidate: populatedApp.candidate,
-//         job: populatedApp.job,
-//         stage: populatedApp.stage,
-//         appliedAt: populatedApp.appliedAt,
-//         resumeSnapshot: populatedApp.resumeSnapshot,
-//         coverLetter: populatedApp.coverLetter,
-//       }
-//     });
-
-//   } catch (err) {
-//     console.error('Error in applyToJob:', err);
-//     res.status(500).json({ message: 'Server error', error: err.message });
-//   }
-// };
-
-
-// ================================
 // Get Applications (All / Role-based)
-// ================================
+
 exports.getApplications = async (req, res) => {
   try {
     const { user } = req;
@@ -264,9 +275,61 @@ exports.getApplications = async (req, res) => {
   }
 };
 
-// ================================
+// exports.getApplications = async (req, res) => {
+//   try {
+//     const { user } = req;
+//     let query = {};
+
+//     if (user.role === 'recruiter') query.assignedTo = user._id;
+//     else if (user.role === 'candidate') query.candidate = user._id;
+
+//     const apps = await Application.find(query)
+//       .populate('candidate', 'firstName lastName email phoneNumber')
+//       .populate('job', 'title team hiringWorkflow')
+//       .populate('assignedTo', 'firstName lastName email team')
+//       .sort({ appliedAt: -1 });
+
+//     // ✅ Mark all remaining stages as rejected (same logic as above)
+//     const updatedApps = apps.map(app => {
+//       const jobStages = app.job?.hiringWorkflow?.stages?.map(s => s.stage) || [];
+//       const rejectedStage = app.stageWiseStatus.find(s => s.action === 'reject');
+
+//       if (rejectedStage) {
+//         const rejectIndex = jobStages.indexOf(rejectedStage.stageName);
+
+//         for (let i = rejectIndex + 1; i < jobStages.length; i++) {
+//           const stageName = jobStages[i];
+//           const existing = app.stageWiseStatus.find(s => s.stageName === stageName);
+//           if (existing) {
+//             existing.status = 'completed';
+//             existing.action = 'reject';
+//           } else {
+//             app.stageWiseStatus.push({
+//               stageName,
+//               status: 'completed',
+//               action: 'reject',
+//               updatedAt: new Date(),
+//             });
+//           }
+//         }
+//       }
+
+//       return app;
+//     });
+
+//     res.json({
+//       message: 'Fetched applications successfully',
+//       applications: updatedApps,
+//     });
+//   } catch (err) {
+//     console.error('❌ Error in getApplications:', err);
+//     res.status(500).json({ message: 'Server error', error: err.message });
+//   }
+// };
+
+
 // Get My Applications (Candidate only)
-// ================================
+
 exports.getMyApplications = async (req, res) => {
   try {
     const user = req.user;
@@ -291,6 +354,63 @@ exports.getMyApplications = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
+
+// exports.getMyApplications = async (req, res) => {
+//   try {
+//     const user = req.user;
+//     if (user.role !== 'candidate') {
+//       return res.status(403).json({ message: 'Only candidates can view their applications' });
+//     }
+
+//     const myApps = await Application.find({ candidate: user._id })
+//       .populate('job', 'title team hiringWorkflow')
+//       .populate('assignedTo', 'firstName lastName email team')
+//       .sort({ appliedAt: -1 });
+
+//     if (!myApps.length)
+//       return res.status(404).json({ message: 'No applications found for this user' });
+
+//     // ✅ Mark remaining stages as rejected in the response (if user was rejected)
+//     const updatedApps = myApps.map(app => {
+//       const jobStages = app.job?.hiringWorkflow?.stages?.map(s => s.stage) || [];
+//       const rejectedStage = app.stageWiseStatus.find(s => s.action === 'reject');
+
+//       if (rejectedStage) {
+//         const rejectIndex = jobStages.indexOf(rejectedStage.stageName);
+
+//         // Mark all stages after rejection as rejected
+//         for (let i = rejectIndex + 1; i < jobStages.length; i++) {
+//           const stageName = jobStages[i];
+//           const existing = app.stageWiseStatus.find(s => s.stageName === stageName);
+//           if (existing) {
+//             existing.status = 'completed';
+//             existing.action = 'reject';
+//           } else {
+//             app.stageWiseStatus.push({
+//               stageName,
+//               status: 'completed',
+//               action: 'reject',
+//               updatedAt: new Date(),
+//             });
+//           }
+//         }
+//       }
+
+//       return app;
+//     });
+
+//     res.json({
+//       message: 'Fetched my applications successfully',
+//       applications: updatedApps,
+//     });
+//   } catch (err) {
+//     console.error('❌ Error in getMyApplications:', err);
+//     res.status(500).json({ message: 'Server error', error: err.message });
+//   }
+// };
+
+
+
 
 // Assign Application to Recruiter
 exports.assignToRecruiter = async (req, res) => {
@@ -323,74 +443,179 @@ exports.assignToRecruiter = async (req, res) => {
 
 
 // Update Application Stage / Status (Manual Only)
+
 // exports.updateApplicationStatus = async (req, res) => {
 //   try {
 //     const { applicationId } = req.params;
-//     const { stage, statusNotes } = req.body;
+//     const { stageName, action, notes } = req.body; // { "stageName": "hr_interview", "action": "reject" }
 
-//     const app = await Application.findById(applicationId)
-//       .populate('candidate', 'firstName lastName email')
-//       .populate('job', 'title team');
-
+//     const app = await Application.findById(applicationId);
 //     if (!app) return res.status(404).json({ message: 'Application not found' });
 
-//     if (stage) app.stage = stage;
-//     if (statusNotes) app.statusNotes = statusNotes;
-//     await app.save();
+//     // Find the index of the stage
+//     const currentIndex = app.stageWiseStatus.findIndex(s => s.stageName === stageName);
+//     if (currentIndex === -1) return res.status(400).json({ message: 'Invalid stage name' });
 
-//     // ✅ Send stage update email
-//     try {
-//       const candidate = app.candidate;
-//       const job = app.job;
-//       const stageMap = {
-//         applied: 'Application Received',
-//         resume_shortlisted: 'Resume Shortlisted',
-//         screening_test: 'Screening Test',
-//         technical_interview: 'Technical Interview Round',
-//         hr_interview: 'HR Interview Round',
-//         offered: 'Job Offer',
-//         rejected: 'Application Rejected',
-//         hired: 'Congratulations! You are Hired 🎉'
-//       };
-
-//       const subject = `Update on your application for ${job.title}`;
-//       const html = `
-//         <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-//           <h2 style="color: #0073e6;">${stageMap[stage] || 'Application Update'}</h2>
-//           <p>Dear <strong>${candidate.firstName} ${candidate.lastName}</strong>,</p>
-//           <p>Your application for the position of <strong>${job.title}</strong> is now at stage: <strong>${stageMap[stage]}</strong>.</p>
-//           ${statusNotes ? `<p>Note: ${statusNotes}</p>` : ''}
-//           <p>We’ll keep you updated with further progress.</p>
-//           <br/>
-//           <p>Best regards,<br/><strong>Signavox Careers Team</strong></p>
-//         </div>
-//       `;
-//       await sendMail({ to: candidate.email, subject, html });
-//     } catch (emailError) {
-//       console.error('Error sending status email:', emailError.message);
+//     // Check previous stage must be completed & accepted
+//     if (currentIndex > 0) {
+//       const prev = app.stageWiseStatus[currentIndex - 1];
+//       if (!(prev.status === 'completed' && prev.action === 'accept')) {
+//         return res.status(400).json({
+//           message: `Cannot review ${stageName} until ${prev.stageName} is completed and accepted.`
+//         });
+//       }
 //     }
 
-//     // ✅ Don’t return offerLetterUrl or extra details
-//     res.json({
-//       message: 'Application stage updated successfully (no offer letter generated)',
-//       application: {
-//         _id: app._id,
-//         stage: app.stage,
-//         statusNotes: app.statusNotes,
-//         candidate: {
-//           firstName: app.candidate.firstName,
-//           lastName: app.candidate.lastName,
-//           email: app.candidate.email
-//         },
-//         job: {
-//           title: app.job.title,
-//           team: app.job.team
-//         }
+//     // Update the current stage
+//     app.stageWiseStatus[currentIndex].action = action;
+//     app.stageWiseStatus[currentIndex].status = 'completed';
+//     app.stageWiseStatus[currentIndex].updatedAt = new Date();
+
+//     // If rejected — stop further stages
+//     if (action === 'reject') {
+//       app.stage = 'rejected';
+//       app.statusNotes = notes || `Rejected at stage ${stageName}`;
+//       for (let i = currentIndex + 1; i < app.stageWiseStatus.length; i++) {
+//         app.stageWiseStatus[i].status = 'pending';
+//         app.stageWiseStatus[i].action = null;
 //       }
+//     } else if (action === 'accept') {
+//       // Move to next stage if available
+//       const nextStage = app.stageWiseStatus[currentIndex + 1];
+//       if (nextStage) {
+//         app.stage = nextStage.stageName;
+//         nextStage.status = 'in_review';
+//       } else {
+//         app.stage = 'hired'; // all done
+//       }
+//     }
+
+//     await app.save();
+
+//     res.status(200).json({
+//       message: `Stage '${stageName}' marked as ${action}`,
+//       application: app
 //     });
 
 //   } catch (err) {
-//     console.error('Error in updateApplicationStatus:', err);
+//     console.error('Error in updateStageAction:', err);
+//     res.status(500).json({ message: 'Server error', error: err.message });
+//   }
+// };
+
+// exports.updateApplicationStatus = async (req, res) => {
+//   try {
+//     const { applicationId } = req.params;
+//     const { stageName, action, notes } = req.body;
+
+//     // Fetch Application and populate Job
+//     const app = await Application.findById(applicationId).populate('job');
+//     if (!app) return res.status(404).json({ message: 'Application not found' });
+
+//     const job = app.job;
+//     const workflowStages = job?.hiringWorkflow?.stages || [];
+
+//     if (workflowStages.length === 0)
+//       return res.status(400).json({ message: 'No stages found for this job' });
+
+//     const workflow = workflowStages.map(s => s.stage);
+
+//     const currentIndex = workflow.indexOf(stageName);
+//     if (currentIndex === -1)
+//       return res.status(400).json({ message: 'Invalid stage name' });
+
+//     // ✅ Stop if candidate already rejected earlier
+//     const rejectedStage = app.stageWiseStatus.find(s => s.action === 'reject');
+//     if (rejectedStage) {
+//       return res.status(400).json({
+//         message: `Candidate already rejected at ${rejectedStage.stageName}. No further updates allowed.`,
+//       });
+//     }
+
+//     // ✅ Ensure previous stage accepted (normal flow validation)
+//     if (currentIndex > 0) {
+//       const prevStageName = workflow[currentIndex - 1];
+//       const prevStage = app.stageWiseStatus.find(s => s.stageName === prevStageName);
+//       if (!prevStage || prevStage.action !== 'accept') {
+//         return res.status(400).json({
+//           message: `Cannot update ${stageName} until ${prevStageName} stage is accepted.`,
+//         });
+//       }
+//     }
+
+//     // ✅ Find or create the current stage
+//     let currentStage = app.stageWiseStatus.find(s => s.stageName === stageName);
+//     if (!currentStage) {
+//       currentStage = { stageName, status: 'pending', action: null, updatedAt: new Date() };
+//       app.stageWiseStatus.push(currentStage);
+//     }
+
+//     // ✅ Update current stage
+//     currentStage.action = action;
+//     currentStage.status = 'completed';
+//     currentStage.updatedAt = new Date();
+
+//     // =========================
+//     // 🔴 Handle REJECT Action
+//     // =========================
+//     if (action === 'reject') {
+//       app.stage = 'rejected';
+//       app.statusNotes = notes || `Application rejected at ${stageName}.`;
+
+//       // Mark all future stages as rejected (completed)
+//       for (let i = currentIndex + 1; i < workflow.length; i++) {
+//         const futureStageName = workflow[i];
+//         const existingFutureStage = app.stageWiseStatus.find(
+//           s => s.stageName === futureStageName
+//         );
+//         if (existingFutureStage) {
+//           existingFutureStage.status = 'completed';
+//           existingFutureStage.action = 'reject';
+//           existingFutureStage.updatedAt = new Date();
+//         } else {
+//           app.stageWiseStatus.push({
+//             stageName: futureStageName,
+//             status: 'completed',
+//             action: 'reject',
+//             updatedAt: new Date(),
+//           });
+//         }
+//       }
+//     }
+
+//     // =========================
+//     // 🟢 Handle ACCEPT Action
+//     // =========================
+//     else if (action === 'accept') {
+//       const nextStageName = workflow[currentIndex + 1];
+//       if (nextStageName) {
+//         app.stage = nextStageName;
+
+//         // Set next stage to pending (instead of in_review)
+//         const nextStage = app.stageWiseStatus.find(s => s.stageName === nextStageName);
+//         if (!nextStage) {
+//           app.stageWiseStatus.push({
+//             stageName: nextStageName,
+//             status: 'pending',
+//             action: null,
+//             updatedAt: null,
+//           });
+//         }
+//       } else {
+//         app.stage = 'hired';
+//         app.statusNotes = 'Candidate successfully hired.';
+//       }
+//     }
+
+//     await app.save();
+
+//     res.status(200).json({
+//       message: `Stage '${stageName}' marked as '${action}'.`,
+//       currentStage: app.stage,
+//       stageDetails: app.stageWiseStatus,
+//     });
+//   } catch (err) {
+//     console.error('❌ Error in updateApplicationStatus:', err);
 //     res.status(500).json({ message: 'Server error', error: err.message });
 //   }
 // };
@@ -398,84 +623,126 @@ exports.assignToRecruiter = async (req, res) => {
 exports.updateApplicationStatus = async (req, res) => {
   try {
     const { applicationId } = req.params;
-    const { stageName, action, notes } = req.body; // { "stageName": "hr_interview", "action": "reject" }
+    const { stageName, action, notes } = req.body;
 
-    const app = await Application.findById(applicationId);
+    // Fetch Application and populate Job
+    const app = await Application.findById(applicationId).populate('job');
     if (!app) return res.status(404).json({ message: 'Application not found' });
 
-    // Find the index of the stage
-    const currentIndex = app.stageWiseStatus.findIndex(s => s.stageName === stageName);
-    if (currentIndex === -1) return res.status(400).json({ message: 'Invalid stage name' });
+    const job = app.job;
+    const workflowStages = job?.hiringWorkflow?.stages || [];
 
-    // Check previous stage must be completed & accepted
+    // ✅ Check if Job has workflow stages
+    if (workflowStages.length === 0)
+      return res.status(400).json({ message: 'No stages found for this job' });
+
+    // ✅ Extract only stage names from the workflow
+    const workflow = workflowStages.map(s => s.stage);
+
+    // ✅ Validate stageName existence
+    if (!workflow.includes(stageName)) {
+      return res.status(400).json({
+        message: `Stage '${stageName}' is not part of this job's hiring workflow.`,
+        // validStages: workflow
+      });
+    }
+
+    const currentIndex = workflow.indexOf(stageName);
+
+    // ✅ Stop if candidate already rejected earlier
+    const rejectedStage = app.stageWiseStatus.find(s => s.action === 'reject');
+    if (rejectedStage) {
+      return res.status(400).json({
+        message: `Candidate already rejected at ${rejectedStage.stageName}. No further updates allowed.`,
+      });
+    }
+
+    // ✅ Ensure previous stage accepted before updating current one
     if (currentIndex > 0) {
-      const prev = app.stageWiseStatus[currentIndex - 1];
-      if (!(prev.status === 'completed' && prev.action === 'accept')) {
+      const prevStageName = workflow[currentIndex - 1];
+      const prevStage = app.stageWiseStatus.find(s => s.stageName === prevStageName);
+      if (!prevStage || prevStage.action !== 'accept') {
         return res.status(400).json({
-          message: `Cannot review ${stageName} until ${prev.stageName} is completed and accepted.`
+          message: `Cannot update '${stageName}' until '${prevStageName}' stage is accepted.`,
         });
       }
     }
 
-    // Update the current stage
-    app.stageWiseStatus[currentIndex].action = action;
-    app.stageWiseStatus[currentIndex].status = 'completed';
-    app.stageWiseStatus[currentIndex].updatedAt = new Date();
+    // ✅ Find or create the current stage
+    let currentStage = app.stageWiseStatus.find(s => s.stageName === stageName);
+    if (!currentStage) {
+      currentStage = { stageName, status: 'pending', action: null, updatedAt: new Date() };
+      app.stageWiseStatus.push(currentStage);
+    }
 
-    // If rejected — stop further stages
+    // ✅ Update current stage
+    currentStage.action = action;
+    currentStage.status = 'completed';
+    currentStage.updatedAt = new Date();
+
+    //  Handle REJECT Action
     if (action === 'reject') {
       app.stage = 'rejected';
-      app.statusNotes = notes || `Rejected at stage ${stageName}`;
-      for (let i = currentIndex + 1; i < app.stageWiseStatus.length; i++) {
-        app.stageWiseStatus[i].status = 'pending';
-        app.stageWiseStatus[i].action = null;
+      app.statusNotes = notes || `Application rejected at ${stageName}.`;
+
+      // Mark all future stages as rejected (completed)
+      for (let i = currentIndex + 1; i < workflow.length; i++) {
+        const futureStageName = workflow[i];
+        const existingFutureStage = app.stageWiseStatus.find(
+          s => s.stageName === futureStageName
+        );
+        if (existingFutureStage) {
+          existingFutureStage.status = 'completed';
+          existingFutureStage.action = 'reject';
+          existingFutureStage.updatedAt = new Date();
+        } else {
+          app.stageWiseStatus.push({
+            stageName: futureStageName,
+            status: 'completed',
+            action: 'reject',
+            updatedAt: new Date(),
+          });
+        }
       }
-    } else if (action === 'accept') {
-      // Move to next stage if available
-      const nextStage = app.stageWiseStatus[currentIndex + 1];
-      if (nextStage) {
-        app.stage = nextStage.stageName;
-        nextStage.status = 'in_review';
+    }
+
+    //  Handle ACCEPT Action
+    else if (action === 'accept') {
+      const nextStageName = workflow[currentIndex + 1];
+      if (nextStageName) {
+        app.stage = nextStageName;
+
+        // Add next stage to pending if not present
+        const nextStage = app.stageWiseStatus.find(s => s.stageName === nextStageName);
+        if (!nextStage) {
+          app.stageWiseStatus.push({
+            stageName: nextStageName,
+            status: 'pending',
+            action: null,
+            updatedAt: null,
+          });
+        }
       } else {
-        app.stage = 'hired'; // all done
+        app.stage = 'hired';
+        app.statusNotes = 'Candidate successfully hired.';
       }
     }
 
     await app.save();
 
     res.status(200).json({
-      message: `Stage '${stageName}' marked as ${action}`,
-      application: app
+      message: `Stage '${stageName}' marked as '${action}'.`,
+      currentStage: app.stage,
+      stageDetails: app.stageWiseStatus,
     });
-
   } catch (err) {
-    console.error('Error in updateStageAction:', err);
+    console.error('❌ Error in updateApplicationStatus:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
 
 
-
 // Delete Application
-// exports.deleteApplication = async (req, res) => {
-//   try {
-//     const { applicationId } = req.params;
-
-//     const app = await Application.findById(applicationId);
-//     if (!app) return res.status(404).json({ message: 'Application not found' });
-
-//     await Application.findByIdAndDelete(applicationId);
-//     res.json({ message: 'Application deleted successfully' });
-
-//   } catch (err) {
-//     console.error('Error in deleteApplication:', err);
-//     res.status(500).json({ message: 'Server error', error: err.message });
-//   }
-// };
-
-// ================================
-// Delete Application
-// ================================
 exports.deleteApplication = async (req, res) => {
   try {
     const { applicationId } = req.params;
@@ -522,125 +789,8 @@ exports.getApplicationStatistics = async (req, res) => {
   }
 };
 
-
-// exports.generateOfferLetterManually = async (req, res) => {
-//   try {
-//     const { applicationId } = req.params;
-//     const app = await Application.findById(applicationId)
-//       .populate('candidate', 'firstName lastName email phoneNumber')
-//       .populate('job', 'title team');
-
-//     if (!app) return res.status(404).json({ message: 'Application not found' });
-
-//     const candidate = app.candidate;
-//     const job = app.job;
-
-//     const offerLetterUrl = await generateOfferLetterPDF(candidate, job);
-
-//     app.offerLetterUrl = offerLetterUrl;
-//     app.stage = 'hired'; // stage updated manually
-//     await app.save();
-
-//     const subject = `🎉 Offer Letter for ${job.title}`;
-//     const html = `
-//       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-//         <h2 style="color: #0073e6;">Welcome to Signavox!</h2>
-//         <p>Dear <strong>${candidate.firstName} ${candidate.lastName}</strong>,</p>
-//         <p>We are delighted to offer you the position of <strong>${job.title}</strong> in our <strong>${job.team}</strong> team.</p>
-//         <p>Your official offer letter is ready. You can download it here:</p>
-//         <p><a href="${offerLetterUrl}" style="color: #0073e6;">Download Offer Letter (PDF)</a></p>
-//         <p>We look forward to having you onboard soon!</p>
-//         <br/>
-//         <p>Best regards,<br/><strong>Signavox Careers Team</strong></p>
-//       </div>
-//     `;
-//     await sendMail({ to: candidate.email, subject, html });
-
-//     console.log(`✅ Offer letter manually generated and emailed to ${candidate.email}`);
-
-//     res.status(200).json({ message: 'Offer letter generated successfully', offerLetterUrl, application: app });
-
-//   } catch (error) {
-//     console.error('❌ Error in generateOfferLetterManually:', error.message);
-//     res.status(500).json({ message: 'Server error', error: error.message });
-//   }
-// };
-
-// ================================
 // Generate Offer Letter (Manual Trigger Only)
-// ================================
-// exports.generateOfferLetterManually = async (req, res) => {
-//   try {
-//     const { applicationId } = req.params;
-//     const app = await Application.findById(applicationId)
-//       .populate('candidate', 'firstName lastName email phoneNumber')
-//       .populate('job', 'title team');
 
-//     if (!app) return res.status(404).json({ message: 'Application not found' });
-//     if (app.stage !== 'hired') {
-//       return res.status(400).json({
-//         message: `Offer letter can only be generated when the stage is 'hired'. Current stage: '${app.stage}'.`
-//       });
-//     }
-
-//     if (app.offerLetterUrl) {
-//       return res.status(400).json({
-//         message: 'Offer letter already generated for this candidate.',
-//         offerLetterUrl: app.offerLetterUrl
-//       });
-//     }
-
-//     const candidate = app.candidate;
-//     const job = app.job;
-//     const offerLetterUrl = await generateOfferLetterPDF(candidate, job);
-
-//     app.offerLetterUrl = offerLetterUrl;
-//     app.offerStatus = 'pending';
-//     app.offerGeneratedAt = new Date();
-//     await app.save();
-
-//     // ✅ Email with Accept/Reject buttons
-//     const acceptUrl = `${process.env.FRONTEND_URL}/offer/${app._id}/accept`;
-//     const rejectUrl = `${process.env.FRONTEND_URL}/offer/${app._id}/reject`;
-
-//     const subject = `🎉 Offer Letter for ${job.title}`;
-//     const html = `
-//       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-//         <h2 style="color: #0073e6;">Welcome to Signavox!</h2>
-//         <p>Dear <strong>${candidate.firstName} ${candidate.lastName}</strong>,</p>
-//         <p>We are delighted to offer you the position of <strong>${job.title}</strong> in our <strong>${job.team}</strong> team.</p>
-//         <p>Your official offer letter is ready. You can download it here:</p>
-//         <p><a href="${offerLetterUrl}" style="color: #0073e6;">Download Offer Letter (PDF)</a></p>
-//         <p>Please respond within 7 days by clicking one of the buttons below:</p>
-//         <div style="margin-top: 15px;">
-//           <a href="${acceptUrl}" style="background:#28a745;color:white;padding:10px 20px;border-radius:5px;text-decoration:none;margin-right:10px;">Accept Offer</a>
-//           <a href="${rejectUrl}" style="background:#dc3545;color:white;padding:10px 20px;border-radius:5px;text-decoration:none;">Reject Offer</a>
-//         </div>
-//         <br/>
-//         <p>If you do not respond within 7 days, this offer will expire automatically.</p>
-//         <br/>
-//         <p>Best regards,<br/><strong>Signavox Careers Team</strong></p>
-//       </div>
-//     `;
-//     await sendMail({ to: candidate.email, subject, html });
-
-//     console.log(`✅ Offer letter sent with Accept/Reject links to ${candidate.email}`);
-
-//     res.status(200).json({
-//       message: 'Offer letter generated and emailed successfully',
-//       offerLetterUrl,
-//       application: app
-//     });
-
-//   } catch (error) {
-//     console.error('❌ Error in generateOfferLetterManually:', error.message);
-//     res.status(500).json({ message: 'Server error', error: error.message });
-//   }
-// };
-
-// ================================
-// Generate Offer Letter (Manual Trigger Only)
-// ================================
 exports.generateOfferLetterManually = async (req, res) => {
   try {
     const { applicationId } = req.params;
@@ -707,9 +857,7 @@ exports.generateOfferLetterManually = async (req, res) => {
   }
 };
 
-// ================================
 // Get Offer Letter
-// ================================
 exports.getOfferLetter = async (req, res) => {
   try {
     const { applicationId } = req.params;
@@ -744,9 +892,8 @@ exports.getOfferLetter = async (req, res) => {
 };
 
 
-// ================================
+
 // Candidate Accept Offer
-// ================================
 exports.acceptOffer = async (req, res) => {
   try {
     const { applicationId } = req.params;
@@ -769,9 +916,8 @@ exports.acceptOffer = async (req, res) => {
   }
 };
 
-// ================================
+
 // Candidate Reject Offer
-// ================================
 exports.rejectOffer = async (req, res) => {
   try {
     const { applicationId } = req.params;
