@@ -1,8 +1,6 @@
 const Application = require('../models/Application');
 
-// ==============================
 // ✅ Get Upcoming Events (User-specific)
-// ==============================
 exports.getUpcomingEvents = async (req, res) => {
   try {
     // Get applications only for the logged-in user

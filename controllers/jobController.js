@@ -93,18 +93,104 @@ const autoCloseExpiredJobs = async () => {
 //   });
 // };
 
+// exports.createJob = async (req, res) => {
+//   upload.array('document')(req, res, async function (err) {
+//     if (err) return res.status(400).json({ message: 'Upload error', error: err.message });
+
+//     try {
+//       const adminUser = req.user;
+
+//       const jobDescription = req.body.jobDescription ? JSON.parse(req.body.jobDescription) : {};
+//       const hiringWorkflow = req.body.hiringWorkflow ? JSON.parse(req.body.hiringWorkflow) : {};
+//       const eligibilityCriteria = req.body.eligibilityCriteria ? JSON.parse(req.body.eligibilityCriteria) : {};
+
+//       // Initialize arrays
+//       jobDescription.responsibilities = jobDescription.responsibilities || [];
+//       jobDescription.requirements = jobDescription.requirements || [];
+//       jobDescription.benefits = jobDescription.benefits || [];
+//       jobDescription.document = [];
+//       jobDescription.summary = jobDescription.summary || {};
+//       jobDescription.summary.responsibilities = jobDescription.summary.responsibilities || [];
+//       jobDescription.summary.qualifications = jobDescription.summary.qualifications || [];
+
+//       hiringWorkflow.stages = hiringWorkflow.stages || [];
+//       eligibilityCriteria.required = eligibilityCriteria.required || [];
+//       eligibilityCriteria.preferred = eligibilityCriteria.preferred || [];
+//       eligibilityCriteria.skills = eligibilityCriteria.skills || [];
+
+//       // Handle uploaded documents
+//       if (req.files && req.files.length > 0) {
+//         jobDescription.document = req.files.map(file => ({
+//           name: file.originalname,
+//           url: file.location,
+//           uploadedAt: new Date()
+//         }));
+//       }
+
+//       // ✅ Parse DD-MM-YYYY safely
+//       let closingDateInput = req.body.closingDate;
+//       if (closingDateInput && /^\d{2}-\d{2}-\d{4}$/.test(closingDateInput)) {
+//         const [day, month, year] = closingDateInput.split('-');
+//         closingDateInput = `${year}-${month}-${day}`;
+//       }
+
+//       if (closingDateInput) {
+//         const closingDate = new Date(closingDateInput);
+//         const today = new Date();
+//         today.setHours(0, 0, 0, 0);
+//         closingDate.setHours(0, 0, 0, 0);
+//         if (closingDate < today) {
+//           return res.status(400).json({
+//             message: `Invalid closing date. The closing date (${req.body.closingDate}) cannot be in the past.`
+//           });
+//         }
+//       }
+
+//       // ✅ Proceed with job creation
+//       const job = new Job({
+//         title: req.body.title,
+//         location: req.body.location,
+//         type: req.body.type,
+//         experience: req.body.experience,
+//         closingDate: closingDateInput,
+//         jobDescription,
+//         hiringWorkflow,
+//         eligibilityCriteria,
+//         createdBy: adminUser._id,
+//         assignedTo: req.body.assignedTo
+//       });
+
+//       await job.save();
+//       await job.populate([
+//         { path: 'createdBy', select: 'name email role' },
+//         { path: 'assignedTo', select: 'name email role' }
+//       ]);
+
+//       res.status(201).json({ job });
+//     } catch (err) {
+//       console.error(err);
+//       res.status(500).json({ message: 'Server error', error: err.message });
+//     }
+//   });
+// };
+
 exports.createJob = async (req, res) => {
   upload.array('document')(req, res, async function (err) {
-    if (err) return res.status(400).json({ message: 'Upload error', error: err.message });
+    if (err)
+      return res.status(400).json({
+        message: 'Upload error',
+        error: err.message
+      });
 
     try {
       const adminUser = req.user;
 
+      // Parse JSON fields
       const jobDescription = req.body.jobDescription ? JSON.parse(req.body.jobDescription) : {};
       const hiringWorkflow = req.body.hiringWorkflow ? JSON.parse(req.body.hiringWorkflow) : {};
       const eligibilityCriteria = req.body.eligibilityCriteria ? JSON.parse(req.body.eligibilityCriteria) : {};
 
-      // Initialize arrays
+      // Initialize structure
       jobDescription.responsibilities = jobDescription.responsibilities || [];
       jobDescription.requirements = jobDescription.requirements || [];
       jobDescription.benefits = jobDescription.benefits || [];
@@ -118,7 +204,7 @@ exports.createJob = async (req, res) => {
       eligibilityCriteria.preferred = eligibilityCriteria.preferred || [];
       eligibilityCriteria.skills = eligibilityCriteria.skills || [];
 
-      // Handle uploaded documents
+      // Uploaded documents
       if (req.files && req.files.length > 0) {
         jobDescription.document = req.files.map(file => ({
           name: file.originalname,
@@ -127,26 +213,44 @@ exports.createJob = async (req, res) => {
         }));
       }
 
-      // ✅ Parse DD-MM-YYYY safely
+      // ===============================
+      //   CLOSING DATE VALIDATION
+      // ===============================
+
       let closingDateInput = req.body.closingDate;
-      if (closingDateInput && /^\d{2}-\d{2}-\d{4}$/.test(closingDateInput)) {
-        const [day, month, year] = closingDateInput.split('-');
-        closingDateInput = `${year}-${month}-${day}`;
+
+      // ❗ Accept ONLY YYYY-MM-DD
+      if (closingDateInput && !/^\d{4}-\d{2}-\d{2}$/.test(closingDateInput)) {
+        return res.status(400).json({
+          message: "Invalid date format. Use only YYYY-MM-DD format."
+        });
       }
 
+      // Validate if date is in the future
       if (closingDateInput) {
         const closingDate = new Date(closingDateInput);
         const today = new Date();
+
         today.setHours(0, 0, 0, 0);
         closingDate.setHours(0, 0, 0, 0);
+
+        if (isNaN(closingDate.getTime())) {
+          return res.status(400).json({
+            message: "Invalid date. Please provide a valid YYYY-MM-DD date."
+          });
+        }
+
         if (closingDate < today) {
           return res.status(400).json({
-            message: `Invalid closing date. The closing date (${req.body.closingDate}) cannot be in the past.`
+            message: `Invalid closing date. The closing date (${closingDateInput}) cannot be in the past.`
           });
         }
       }
 
-      // ✅ Proceed with job creation
+      // ===============================
+      //   CREATE JOB
+      // ===============================
+
       const job = new Job({
         title: req.body.title,
         location: req.body.location,
@@ -161,18 +265,21 @@ exports.createJob = async (req, res) => {
       });
 
       await job.save();
+
       await job.populate([
         { path: 'createdBy', select: 'name email role' },
         { path: 'assignedTo', select: 'name email role' }
       ]);
 
       res.status(201).json({ job });
+
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: 'Server error', error: err.message });
     }
   });
 };
+
 
 
 

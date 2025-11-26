@@ -6,9 +6,7 @@ const { sendMail } = require('../utils/email');
 const generateOTP = require('../utils/generateOTP');
 
 
-// ================================
 // Register Candidate (Complete version with all fields)
-// ================================
 
 // exports.registerCandidate = async (req, res) => {
 //   try {
@@ -16,7 +14,8 @@ const generateOTP = require('../utils/generateOTP');
 //       firstName, middleName, lastName, gender,
 //       email, phoneNumber, pan, skills = [],
 //       education = [], experienced = false,
-//       experiences = [], DOB, permanentAddress,
+//       experiences = [], certifications = [],
+//       DOB, permanentAddress,
 //       currentAddress, socialLinks = {}, team = 'none'
 //     } = req.body;
 
@@ -33,6 +32,10 @@ const generateOTP = require('../utils/generateOTP');
 
 //     if (typeof experiences === 'string') {
 //       try { experiences = JSON.parse(experiences); } catch { experiences = []; }
+//     }
+
+//     if (typeof certifications === 'string') {
+//       try { certifications = JSON.parse(certifications); } catch { certifications = []; }
 //     }
 
 //     if (typeof socialLinks === 'string') {
@@ -85,6 +88,7 @@ const generateOTP = require('../utils/generateOTP');
 //       education,
 //       experienced,
 //       experiences,
+//       certifications, // ✅ new field added
 //       resume,
 //       profileImage,
 //       DOB,
@@ -136,33 +140,23 @@ exports.registerCandidate = async (req, res) => {
       currentAddress, socialLinks = {}, team = 'none'
     } = req.body;
 
-    // Convert string booleans & parse arrays
     if (typeof experienced === 'string') experienced = experienced.toLowerCase() === 'true';
-
     if (typeof skills === 'string') {
       try { skills = JSON.parse(skills); } catch { skills = skills.split(',').map(s => s.trim()); }
     }
-
     if (typeof education === 'string') {
       try { education = JSON.parse(education); } catch { education = []; }
     }
-
     if (typeof experiences === 'string') {
       try { experiences = JSON.parse(experiences); } catch { experiences = []; }
     }
-
     if (typeof certifications === 'string') {
       try { certifications = JSON.parse(certifications); } catch { certifications = []; }
     }
-
     if (typeof socialLinks === 'string') {
       try { socialLinks = JSON.parse(socialLinks); } catch { socialLinks = {}; }
     }
 
-    // Normalize gender
-    if (gender) gender = gender.toLowerCase();
-
-    // Required field checks
     if (!firstName || !lastName) return res.status(400).json({ message: 'First and last name are required' });
     if (!gender) return res.status(400).json({ message: 'Gender is required' });
     if (!['male', 'female', 'other'].includes(gender)) return res.status(400).json({ message: 'Invalid gender value' });
@@ -205,7 +199,7 @@ exports.registerCandidate = async (req, res) => {
       education,
       experienced,
       experiences,
-      certifications, // ✅ new field added
+      certifications,
       resume,
       profileImage,
       DOB,
@@ -219,10 +213,14 @@ exports.registerCandidate = async (req, res) => {
 
     await user.save();
 
+    // ✅ Wait for userCode to be set
+    await user.reloadDocument?.();
+
     // Send email
     const html = `
       <p>Hi ${user.firstName},</p>
       <p>Your account has been created for <strong>SignaVox Careers</strong>.</p>
+      <p><strong>User ID:</strong> ${user.userCode}</p>
       <p><strong>Email:</strong> ${email}</p>
       <p><strong>Password:</strong> ${rawPassword}</p>
       <p>Please login and change your password after first login.</p>
@@ -246,10 +244,7 @@ exports.registerCandidate = async (req, res) => {
   }
 };
 
-
-// ================================
 // Login
-// ================================
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -278,9 +273,7 @@ exports.login = async (req, res) => {
   }
 };
 
-// ================================
 // Admin creates recruiter/admin
-// ================================
 // exports.createUserByAdmin = async (req, res) => {
 //   try {
 //     let {
@@ -497,9 +490,8 @@ exports.createUserByAdmin = async (req, res) => {
 };
 
 
-// ================================
+
 // Send OTP
-// ================================
 // exports.sendOTP = async (req, res) => {
 //   try {
 //     const { email } = req.body;
@@ -563,9 +555,8 @@ exports.sendOTP = async (req, res) => {
 };
 
 
-// ================================
+
 // Reset Password
-// ================================
 exports.resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
@@ -593,9 +584,7 @@ exports.resetPassword = async (req, res) => {
 };
 
 
-// ================================
 // Validate Token (Check token validity & return user info)
-// ================================
 exports.validateToken = async (req, res) => {
   try {
     // req.user is already attached by auth middleware

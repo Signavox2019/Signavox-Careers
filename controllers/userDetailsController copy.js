@@ -77,6 +77,7 @@ exports.addEducation = async (req, res) => {
   }
 };
 
+// get education details
 exports.getEducation = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('education');
@@ -460,91 +461,171 @@ exports.getSkills = async (req, res) => {
 };
 
 
-
-// ADD RESUME (UPLOAD TO S3)
-
+// ADD RESUME
 exports.addResume = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: 'Please upload a resume file' });
+      return res.status(400).json({ message: "Please upload a resume file" });
     }
 
-    const resumeUrl = req.file.location; // S3 URL
+    const resumeObj = {
+      fileUrl: req.file.location,
+      isPrimary: false
+    };
 
-    const user = await User.findByIdAndUpdate(
-      req.user.id,
-      { resume: resumeUrl },
-      { new: true }
-    );
+    const user = await User.findById(req.user.id);
 
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Add to resumes array
+    user.resumes.push(resumeObj);
+
+    // If no primary resume exists, set this as primary
+    if (!user.resumes.some(r => r.isPrimary)) {
+      resumeObj.isPrimary = true;
+      user.resume = resumeObj.fileUrl; // update main resume field
+    }
+
+    await user.save();
 
     res.json({
-      message: 'Resume uploaded successfully',
-      resumeUrl: user.resume,
+      message: "Resume added successfully",
+      resumes: user.resumes
     });
+
   } catch (error) {
-    console.error('Error uploading resume:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error("Add Resume Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
 
-// UPDATE RESUME (REPLACE FILE)
-
+// UPDATE RESUME
 exports.updateResume = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    const { resumeId } = req.params;
 
-    // If there is an old resume, delete it from S3 first
-    if (user.resume) {
-      const oldKey = user.resume.split('.amazonaws.com/')[1];
+    if (!req.file) {
+      return res.status(400).json({ message: "Please upload a resume file" });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const resumeRecord = user.resumes.id(resumeId);
+    if (!resumeRecord) return res.status(404).json({ message: "Resume not found" });
+
+    // Delete old file from S3
+    const oldKey = resumeRecord.fileUrl.split(".amazonaws.com/")[1];
+    if (oldKey) {
       await s3.deleteObject({ Bucket: process.env.AWS_BUCKET_NAME, Key: oldKey }).promise();
     }
 
-    if (!req.file) {
-      return res.status(400).json({ message: 'Please upload a new resume file' });
+    // Update resume with new file
+    resumeRecord.fileUrl = req.file.location;
+
+    // If this resume is primary, update parent "resume" field
+    if (resumeRecord.isPrimary) {
+      user.resume = resumeRecord.fileUrl;
     }
 
-    const resumeUrl = req.file.location;
-
-    user.resume = resumeUrl;
     await user.save();
 
     res.json({
-      message: 'Resume updated successfully',
-      resumeUrl: user.resume,
+      message: "Resume updated successfully",
+      resume: resumeRecord
     });
+
   } catch (error) {
-    console.error('Error updating resume:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error("Update Resume Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
 
-// DELETE RESUME (REMOVE FROM S3 & DB)
+
+// DELETE RESUME
 exports.deleteResume = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    const { resumeId } = req.params;
 
-    if (!user.resume) {
-      return res.status(400).json({ message: 'No resume to delete' });
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const resumeRecord = user.resumes.id(resumeId);
+    if (!resumeRecord) return res.status(404).json({ message: "Resume not found" });
+
+    // ❌ Cannot delete if it's the primary resume
+    if (resumeRecord.isPrimary) {
+      return res.status(400).json({ 
+        message: "Cannot delete primary resume. Mark another resume as primary first." 
+      });
     }
 
-    const key = user.resume.split('.amazonaws.com/')[1];
-
     // Delete from S3
+    const key = resumeRecord.fileUrl.split(".amazonaws.com/")[1];
     await s3.deleteObject({ Bucket: process.env.AWS_BUCKET_NAME, Key: key }).promise();
 
-    // Remove from DB
-    user.resume = null;
+    // Remove from array
+    resumeRecord.deleteOne();
     await user.save();
 
-    res.json({ message: 'Resume deleted successfully' });
+    res.json({ message: "Resume deleted successfully" });
+
   } catch (error) {
-    console.error('Error deleting resume:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error("Delete Resume Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+
+// get all resumes
+exports.getAllResumes = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("resumes");
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({
+      message: "Resumes fetched successfully",
+      resumes: user.resumes
+    });
+
+  } catch (error) {
+    console.error("Get Resumes Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+//Mark the resume as primary
+
+exports.markPrimaryResume = async (req, res) => {
+  try {
+    const { resumeId } = req.params;
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const resumeRecord = user.resumes.id(resumeId);
+    if (!resumeRecord) return res.status(404).json({ message: "Resume not found" });
+
+    // Remove primary from all
+    user.resumes.forEach(r => (r.isPrimary = false));
+
+    // Mark selected as primary
+    resumeRecord.isPrimary = true;
+    user.resume = resumeRecord.fileUrl; // update main field
+
+    await user.save();
+
+    res.json({
+      message: "Primary resume updated successfully",
+      primaryResume: resumeRecord
+    });
+
+  } catch (error) {
+    console.error("Primary Resume Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+

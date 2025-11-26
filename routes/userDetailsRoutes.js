@@ -37,10 +37,16 @@ router.get('/certifications/:certId', auth,controller.getCertificationById);
 router.put('/certifications/:certId', auth, controller.updateCertification);
 router.delete('/certifications/:certId', auth, controller.deleteCertification);
 
+//resume routes
+// router.post('/resumes', auth, upload.single('resume'), controller.addResume);
+// router.put('/resumes/:resumeId', auth, upload.single('resume'), controller.updateResume);
+// router.delete('/resumes/:resumeId', auth, controller.deleteResume);
+// router.get('/resumes', auth, controller.getAllResumes);
+// router.put('/resumes/set-primary/:resumeId', auth, controller.markPrimaryResume);
+
 // RESUME ROUTES
 router.post('/resume', auth, upload.single('resume'), controller.addResume);
 router.put('/resume', auth, upload.single('resume'), controller.updateResume);
 router.delete('/resume', auth, controller.deleteResume);
-
 
 module.exports = router;
