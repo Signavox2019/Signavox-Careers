@@ -271,21 +271,51 @@ exports.getExperienceById = async (req, res) => {
 // =============================
 // CERTIFICATIONS (ID-based)
 // =============================
+// exports.addCertification = async (req, res) => {
+//   try {
+//     const { certification } = req.body;
+//     const user = await User.findById(req.user.id);
+//     user.certifications.push(certification);
+//     await user.save();
+
+//     res.json({
+//       message: 'Certification added successfully',
+//       certifications: user.certifications
+//     });
+//   } catch (error) {
+//     res.status(500).json({ message: 'Server error', error });
+//   }
+// };
+
+
 exports.addCertification = async (req, res) => {
   try {
     const { certification } = req.body;
+
     const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Push new certificate
     user.certifications.push(certification);
+
+    // Get the newly added certification (last item)
+    const newlyAdded = user.certifications[user.certifications.length - 1];
+
     await user.save();
 
     res.json({
-      message: 'Certification added successfully',
-      certifications: user.certifications
+      message: "Certification added successfully",
+      certification: newlyAdded   // ✅ only return new one
     });
+
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    console.error("Add Certification Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 exports.getCertifications = async (req, res) => {
   try {
