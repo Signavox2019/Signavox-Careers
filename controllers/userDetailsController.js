@@ -178,18 +178,43 @@ exports.deleteEducation = async (req, res) => {
 // =============================
 // EXPERIENCE DETAILS (ID-based)
 // =============================
+// exports.addExperience = async (req, res) => {
+//   try {
+//     const { experience } = req.body;
+//     const user = await User.findById(req.user.id);
+//     user.experiences.push(experience);
+//     user.experienced = true;
+//     await user.save();
+
+//     res.json({
+//       message: 'Experience added successfully',
+//       experiences: user.experiences
+//     });
+//   } catch (error) {
+//     res.status(500).json({ message: 'Server error', error });
+//   }
+// };
+
+
 exports.addExperience = async (req, res) => {
   try {
     const { experience } = req.body;
     const user = await User.findById(req.user.id);
+
+    // Add new experience
     user.experiences.push(experience);
     user.experienced = true;
+
     await user.save();
+
+    // Get the newly added experience (last element)
+    const latestExperience = user.experiences[user.experiences.length - 1];
 
     res.json({
       message: 'Experience added successfully',
-      experiences: user.experiences
+      newExperience: latestExperience
     });
+
   } catch (error) {
     res.status(500).json({ message: 'Server error', error });
   }
@@ -576,5 +601,29 @@ exports.deleteResume = async (req, res) => {
   } catch (error) {
     console.error('Error deleting resume:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// GET RESUME
+exports.getResume = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("resume");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!user.resume) {
+      return res.status(400).json({ message: "No resume found" });
+    }
+
+    res.json({
+      message: "Resume fetched successfully",
+      resumeUrl: user.resume,
+    });
+
+  } catch (error) {
+    console.error("Get Resume Error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };

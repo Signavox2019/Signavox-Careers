@@ -45,8 +45,10 @@ router.delete('/certifications/:certId', auth, controller.deleteCertification);
 // router.put('/resumes/set-primary/:resumeId', auth, controller.markPrimaryResume);
 
 // RESUME ROUTES
+router.get('/resume', auth, controller.getResume);
 router.post('/resume', auth, upload.single('resume'), controller.addResume);
 router.put('/resume', auth, upload.single('resume'), controller.updateResume);
 router.delete('/resume', auth, controller.deleteResume);
+
 
 module.exports = router;

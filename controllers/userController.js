@@ -14,9 +14,70 @@ const Application = require('../models/Application');
 // };
 
 
+// exports.getAllUsers = async (req, res) => {
+//   try {
+//     const users = await User.find().select('-password -resetPasswordOtp -resetPasswordExpiry');
+
+//     const usersWithExtra = await Promise.all(users.map(async (user) => {
+//       const userObj = user.toObject();
+
+//       // -----------------------
+//       // For recruiter: show assigned jobs and applicant stats
+//       // -----------------------
+//       if (user.role === 'recruiter') {
+//         const jobs = await Job.find({ assignedTo: user._id }).select('_id title type location status');
+//         userObj.assignedJobs = jobs || [];
+
+//         if (jobs && jobs.length > 0) {
+//           const applicants = await Application.find({ job: { $in: jobs.map(j => j._id) } })
+//             .populate('candidate', 'name email phone');
+//           userObj.totalApplicants = applicants.length;
+//           userObj.applicants = applicants.map(a => ({
+//             _id: a.candidate?._id,
+//             name: a.candidate?.name,
+//             email: a.candidate?.email,
+//             phone: a.candidate?.phone,
+//             appliedAt: a.appliedAt,
+//             jobId: a.job
+//           }));
+//         } else {
+//           userObj.totalApplicants = 0;
+//           userObj.applicants = [];
+//         }
+//       }
+
+//       // -----------------------
+//       // For candidate: show applied jobs
+//       // -----------------------
+//       if (user.role === 'candidate') {
+//         const applications = await Application.find({ candidate: user._id })
+//           .populate('job', 'title type location status');
+//         userObj.appliedJobs = applications.map(a => ({
+//           jobId: a.job?._id,
+//           title: a.job?.title,
+//           type: a.job?.type,
+//           location: a.job?.location,
+//           status: a.job?.status,
+//           appliedAt: a.appliedAt
+//         }));
+//       }
+
+//       return userObj;
+//     }));
+
+//     res.json({ users: usersWithExtra });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Server error', error: err.message });
+//   }
+// };
+
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await User.find().select('-password -resetPasswordOtp -resetPasswordExpiry');
+
+    // Total users count
+    const totalUsers = await User.countDocuments();
 
     const usersWithExtra = await Promise.all(users.map(async (user) => {
       const userObj = user.toObject();
@@ -31,6 +92,7 @@ exports.getAllUsers = async (req, res) => {
         if (jobs && jobs.length > 0) {
           const applicants = await Application.find({ job: { $in: jobs.map(j => j._id) } })
             .populate('candidate', 'name email phone');
+
           userObj.totalApplicants = applicants.length;
           userObj.applicants = applicants.map(a => ({
             _id: a.candidate?._id,
@@ -52,6 +114,7 @@ exports.getAllUsers = async (req, res) => {
       if (user.role === 'candidate') {
         const applications = await Application.find({ candidate: user._id })
           .populate('job', 'title type location status');
+
         userObj.appliedJobs = applications.map(a => ({
           jobId: a.job?._id,
           title: a.job?.title,
@@ -65,12 +128,18 @@ exports.getAllUsers = async (req, res) => {
       return userObj;
     }));
 
-    res.json({ users: usersWithExtra });
+    // 🔥 Add totalUsers to response
+    res.json({ 
+      totalUsers,
+      users: usersWithExtra 
+    });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
+
 // Get user by ID (admin or self)
 // exports.getUserById = async (req, res) => {
 //   try {

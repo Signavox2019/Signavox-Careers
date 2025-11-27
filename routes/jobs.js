@@ -5,8 +5,8 @@ const auth = require('../middlewares/auth');
 const { permit } = require('../middlewares/roles');
 
 // Public routes
-router.get('/', jobController.getJobs);
-router.get('/:id', jobController.getJobById);
+router.get('/', auth,permit('admin'),jobController.getJobs);
+router.get('/:id',auth,permit('admin'), jobController.getJobById);
 
 // Admin routes
 router.get('/stats/summary', auth, permit('admin'), jobController.getJobStats);
