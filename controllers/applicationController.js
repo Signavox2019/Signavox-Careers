@@ -95,6 +95,14 @@ const { generateOfferLetterPDF } = require('../utils/generateOfferLetter');
 
 exports.applyToJob = async (req, res) => {
   try {
+    // Ensure request body is JSON (not FormData)
+    if (req.headers["content-type"] !== "application/json") {
+      return res.status(400).json({
+        message: "Invalid content-type. Please send data as JSON.",
+        example: { jobId: "your_job_id_here" }
+      });
+    }
+
     const candidate = req.user;
     const { jobId } = req.body;
 
@@ -116,9 +124,7 @@ exports.applyToJob = async (req, res) => {
       });
     }
 
-    // ---------------------------------------
     // 3. Prevent Duplicate Applications
-    // ---------------------------------------
     const existingApplication = await Application.findOne({
       candidate: candidate._id,
       job: jobId
@@ -131,9 +137,7 @@ exports.applyToJob = async (req, res) => {
       });
     }
 
-    // ---------------------------------------
     // 4. Build stageWiseStatus
-    // ---------------------------------------
     const workflowStages = job.hiringWorkflow?.stages || [];
     const stageWiseStatus = [];
 
@@ -153,9 +157,7 @@ exports.applyToJob = async (req, res) => {
       });
     });
 
-    // ---------------------------------------
     // 5. Create Application
-    // ---------------------------------------
     const application = new Application({
       candidate: candidate._id,
       job: jobId,
@@ -177,9 +179,7 @@ exports.applyToJob = async (req, res) => {
         "title location type salary description experienceLevel skills openings status createdAt updatedAt"
       );
 
-    // ---------------------------------------
-    // 6. Send Confirmation Email
-    // ---------------------------------------
+    // 6. Email
     const fullName = `${candidate.firstName} ${candidate.lastName}`;
     const subject = `Application Confirmation - ${job.title}`;
 
@@ -209,6 +209,7 @@ exports.applyToJob = async (req, res) => {
     });
   }
 };
+
 
 
 
