@@ -9,101 +9,12 @@ const { generateOfferLetterPDF } = require('../utils/generateOfferLetter');
 // exports.applyToJob = async (req, res) => {
 //   try {
 //     const candidate = req.user;
-//     const { jobId, coverLetter } = req.body;
-
-//     // 🔍 Check if the job exists
-//     const job = await Job.findById(jobId);
-//     if (!job) {
-//       return res.status(404).json({ message: 'Job not found' });
-//     }
-
-//     // 🔍 Check if the user has already applied to this job
-//     const existingApplication = await Application.findOne({
-//       candidate: candidate._id,
-//       job: jobId
-//     });
-
-//     if (existingApplication) {
-//       return res.status(400).json({
-//         message: 'You have already applied for this job.'
-//       });
-//     }
-
-//     // 📝 Create a new application
-//     const application = new Application({
-//       candidate: candidate._id,
-//       job: jobId,
-//       coverLetter
-//     });
-
-//     // ✅ Set updatedAt for the "applied" stage
-//     application.stageWiseStatus = application.stageWiseStatus.map(stage => {
-//       if (stage.stageName === 'applied') {
-//         return {
-//           ...stage.toObject?.() || stage,
-//           updatedAt: new Date()
-//         };
-//       }
-//       return stage;
-//     });
-
-//     await application.save();
-
-//     // ✅ Increment applicant count for the job
-//     await Job.findByIdAndUpdate(jobId, { $inc: { applicants: 1 } });
-
-//     // ✅ Populate candidate & job details for email
-//     const populatedApp = await Application.findById(application._id)
-//       .populate('candidate', 'firstName lastName email phoneNumber')
-//       .populate('job', 'title location type');
-
-//     // ================================
-//     // ✉️ Send confirmation email
-//     // ================================
-//     const fullName = `${candidate.firstName} ${candidate.lastName}`;
-//     const subject = `Application Confirmation - ${populatedApp.job.title}`;
-
-//     const html = `
-//       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-//         <h2 style="color: #0073e6;">Application Received</h2>
-//         <p>Dear <strong>${fullName}</strong>,</p>
-//         <p>Thank you for applying for the position of <strong>${populatedApp.job.title}</strong> at <strong>Signavox</strong>.</p>
-//         <p>Your application has been successfully submitted and is currently under review.</p>
-//         <p>We will reach out to you if your profile matches our requirements.</p>
-//         <br />
-//         <p>Best regards,<br /><strong>Signavox Careers Team</strong></p>
-//       </div>
-//     `;
-
-//     await sendMail({
-//       to: candidate.email,
-//       subject,
-//       html
-//     });
-
-//     // ✅ Send success response
-//     res.status(201).json({
-//       message: 'Application submitted successfully',
-//       application: populatedApp
-//     });
-
-//   } catch (error) {
-//     console.error('Error in applyToJob:', error);
-//     res.status(500).json({
-//       message: 'Server error',
-//       error: error.message
-//     });
-//   }
-// };
-
-// exports.applyToJob = async (req, res) => {
-//   try {
-//     const candidate = req.user;
-//     const { jobId, coverLetter } = req.body;
+//     const { jobId} = req.body;
 
 //     const job = await Job.findById(jobId);
 //     if (!job) return res.status(404).json({ message: 'Job not found' });
 
+//     // ✅ Prevent duplicate applications
 //     const existingApplication = await Application.findOne({
 //       candidate: candidate._id,
 //       job: jobId
@@ -111,36 +22,51 @@ const { generateOfferLetterPDF } = require('../utils/generateOfferLetter');
 //     if (existingApplication)
 //       return res.status(400).json({ message: 'You have already applied for this job.' });
 
-//     // ✅ Build stageWiseStatus dynamically from job.hiringWorkflow.stages
+//     // ✅ Build stageWiseStatus dynamically — all pending initially
 //     const stageWiseStatus = [];
-//     const definedStages = job.hiringWorkflow?.stages?.length ? job.hiringWorkflow.stages : [];
 
-//     definedStages.forEach((stg, index) => {
+//     const definedStages = job.hiringWorkflow?.stages?.length
+//       ? job.hiringWorkflow.stages
+//       : [];
+
+//     // ✅ Add 'applied' as the default starting stage
+//     stageWiseStatus.push({
+//       stageName: 'applied',
+//       status: 'completed', // user has just applied
+//       action: 'accept', // automatically accepted into the process
+//       updatedAt: new Date()
+//     });
+
+//     // ✅ Add the rest of the workflow stages as pending
+//     definedStages.forEach(stg => {
 //       stageWiseStatus.push({
 //         stageName: stg.stage,
-//         status: index === 0 ? 'completed' : 'pending',
-//         action: index === 0 ? 'accept' : null,
-//         updatedAt: index === 0 ? new Date() : null
+//         status: 'pending',
+//         action: null,
+//         updatedAt: null
 //       });
 //     });
 
-//     // 📝 Create Application
+//     // 📝 Create new Application document
 //     const application = new Application({
 //       candidate: candidate._id,
 //       job: jobId,
 //       coverLetter,
-//       stage: definedStages[0]?.stage || 'applied',
+//       stage: 'applied', // ✅ always start with applied
 //       stageWiseStatus
 //     });
 
 //     await application.save();
+
+//     // Increment applicant count for the job
 //     await Job.findByIdAndUpdate(jobId, { $inc: { applicants: 1 } });
 
+//     // ✅ Populate for response
 //     const populatedApp = await Application.findById(application._id)
 //       .populate('candidate', 'firstName lastName email phoneNumber')
 //       .populate('job', 'title location type');
 
-//     // ✉️ Email confirmation
+//     // ✉️ Send confirmation email
 //     const fullName = `${candidate.firstName} ${candidate.lastName}`;
 //     const subject = `Application Confirmation - ${populatedApp.job.title}`;
 //     const html = `
@@ -160,8 +86,9 @@ const { generateOfferLetterPDF } = require('../utils/generateOfferLetter');
 //       message: 'Application submitted successfully',
 //       application: populatedApp
 //     });
+
 //   } catch (error) {
-//     console.error('Error in applyToJob:', error);
+//     console.error('❌ Error in applyToJob:', error);
 //     res.status(500).json({ message: 'Server error', error: error.message });
 //   }
 // };
@@ -169,89 +96,121 @@ const { generateOfferLetterPDF } = require('../utils/generateOfferLetter');
 exports.applyToJob = async (req, res) => {
   try {
     const candidate = req.user;
-    const { jobId, coverLetter } = req.body;
+    const { jobId } = req.body;
 
+    if (!jobId) {
+      return res.status(400).json({ message: "Job ID is required" });
+    }
+
+    // 1. Check if Job Exists
     const job = await Job.findById(jobId);
-    if (!job) return res.status(404).json({ message: 'Job not found' });
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
+    }
 
-    // ✅ Prevent duplicate applications
+    // 2. Check if Job is Open
+    if (job.status && job.status !== "open") {
+      return res.status(400).json({
+        message: "This job is closed. Applications are no longer accepted.",
+        jobStatus: job.status
+      });
+    }
+
+    // ---------------------------------------
+    // 3. Prevent Duplicate Applications
+    // ---------------------------------------
     const existingApplication = await Application.findOne({
       candidate: candidate._id,
       job: jobId
     });
-    if (existingApplication)
-      return res.status(400).json({ message: 'You have already applied for this job.' });
 
-    // ✅ Build stageWiseStatus dynamically — all pending initially
+    if (existingApplication) {
+      return res.status(400).json({
+        message: "You have already applied for this job.",
+        existingApplicationId: existingApplication._id
+      });
+    }
+
+    // ---------------------------------------
+    // 4. Build stageWiseStatus
+    // ---------------------------------------
+    const workflowStages = job.hiringWorkflow?.stages || [];
     const stageWiseStatus = [];
 
-    const definedStages = job.hiringWorkflow?.stages?.length
-      ? job.hiringWorkflow.stages
-      : [];
-
-    // ✅ Add 'applied' as the default starting stage
     stageWiseStatus.push({
-      stageName: 'applied',
-      status: 'completed', // user has just applied
-      action: 'accept', // automatically accepted into the process
+      stageName: "applied",
+      status: "completed",
+      action: "accept",
       updatedAt: new Date()
     });
 
-    // ✅ Add the rest of the workflow stages as pending
-    definedStages.forEach(stg => {
+    workflowStages.forEach(step => {
       stageWiseStatus.push({
-        stageName: stg.stage,
-        status: 'pending',
+        stageName: step.stage,
+        status: "pending",
         action: null,
         updatedAt: null
       });
     });
 
-    // 📝 Create new Application document
+    // ---------------------------------------
+    // 5. Create Application
+    // ---------------------------------------
     const application = new Application({
       candidate: candidate._id,
       job: jobId,
-      coverLetter,
-      stage: 'applied', // ✅ always start with applied
+      stage: "applied",
       stageWiseStatus
     });
 
     await application.save();
 
-    // Increment applicant count for the job
     await Job.findByIdAndUpdate(jobId, { $inc: { applicants: 1 } });
 
-    // ✅ Populate for response
     const populatedApp = await Application.findById(application._id)
-      .populate('candidate', 'firstName lastName email phoneNumber')
-      .populate('job', 'title location type');
+      .populate(
+        "candidate",
+        "firstName middleName lastName name email phoneNumber gender DOB permanentAddress currentAddress skills education experiences certifications profileImage resume"
+      )
+      .populate(
+        "job",
+        "title location type salary description experienceLevel skills openings status createdAt updatedAt"
+      );
 
-    // ✉️ Send confirmation email
+    // ---------------------------------------
+    // 6. Send Confirmation Email
+    // ---------------------------------------
     const fullName = `${candidate.firstName} ${candidate.lastName}`;
-    const subject = `Application Confirmation - ${populatedApp.job.title}`;
+    const subject = `Application Confirmation - ${job.title}`;
+
     const html = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2 style="color: #0073e6;">Application Received</h2>
         <p>Dear <strong>${fullName}</strong>,</p>
-        <p>Thank you for applying for the position of <strong>${populatedApp.job.title}</strong> at <strong>Signavox</strong>.</p>
+        <p>Thank you for applying for the position of <strong>${job.title}</strong> at <strong>Signavox</strong>.</p>
         <p>Your application has been successfully submitted and is currently under review.</p>
-        <p>We will reach out to you if your profile matches our requirements.</p>
         <br />
-        <p>Best regards,<br /><strong>Signavox Careers Team</strong></p>
+        <p>Regards,<br><strong>Signavox Careers Team</strong></p>
       </div>
     `;
+
     await sendMail({ to: candidate.email, subject, html });
 
-    res.status(201).json({
-      message: 'Application submitted successfully',
+    return res.status(201).json({
+      message: "Application submitted successfully",
       application: populatedApp
     });
 
   } catch (error) {
-    console.error('❌ Error in applyToJob:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error("❌ Error in applyToJob:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message
+    });
   }
 };
+
+
 
 // Get Applications (All / Role-based)
 

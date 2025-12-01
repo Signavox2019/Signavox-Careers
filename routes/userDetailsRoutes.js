@@ -50,5 +50,8 @@ router.post('/resume', auth, upload.single('resume'), controller.addResume);
 router.put('/resume', auth, upload.single('resume'), controller.updateResume);
 router.delete('/resume', auth, controller.deleteResume);
 
+router.post('/singleresume', auth, upload.single('resume'), controller.manageResume);
+
+
 
 module.exports = router;

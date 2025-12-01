@@ -128,7 +128,6 @@ exports.getAllUsers = async (req, res) => {
       return userObj;
     }));
 
-    // 🔥 Add totalUsers to response
     res.json({ 
       totalUsers,
       users: usersWithExtra 

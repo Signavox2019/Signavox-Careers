@@ -678,3 +678,40 @@ exports.reopenJob = async (req, res) => {
   }
 };
 
+
+// ==========================
+// Get Hiring Stages (Authenticated users only)
+// ==========================
+exports.getHiringStages = async (req, res) => {
+  try {
+    const user = req.user;  // Token validated by auth middleware
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized. Token missing or invalid." });
+    }
+
+    const jobId = req.params.id;
+
+    // Validate job
+    const job = await Job.findById(jobId).select("title hiringWorkflow");
+
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
+    }
+
+    // Extract hiring stages
+    const stages = job.hiringWorkflow?.stages || [];
+
+    return res.json({
+      jobId: jobId,
+      jobTitle: job.title,
+      stages: stages
+    });
+
+  } catch (err) {
+    console.error("Error fetching hiring stages:", err);
+    res.status(500).json({
+      message: "Server error",
+      error: err.message
+    });
+  }
+};

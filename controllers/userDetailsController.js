@@ -627,3 +627,63 @@ exports.getResume = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+
+// =============================
+// SINGLE RESUME CONTROLLER
+// =============================
+exports.manageResume = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // ---------------------------------------
+    // CASE 1: NO FILE → Treat as GET RESUME
+    // ---------------------------------------
+    if (!req.file) {
+
+      if (!user.resume) {
+        return res.status(400).json({
+          message: "No resume found for this user"
+        });
+      }
+
+      return res.json({
+        message: "Resume fetched successfully",
+        resumeUrl: user.resume
+      });
+    }
+
+    // ---------------------------------------
+    // CASE 2: FILE PRESENT → ADD or UPDATE RESUME
+    // ---------------------------------------
+    const newResumeUrl = req.file.location;
+
+    // If old resume exists → remove from S3
+    if (user.resume) {
+      const oldKey = user.resume.split(".amazonaws.com/")[1];
+      if (oldKey) {
+        await s3.deleteObject({
+          Bucket: process.env.AWS_BUCKET_NAME,
+          Key: oldKey
+        }).promise();
+      }
+    }
+
+    // Save new resume
+    user.resume = newResumeUrl;
+    await user.save();
+
+    return res.json({
+      message: "Resume uploaded/updated successfully",
+      resumeUrl: newResumeUrl
+    });
+
+  } catch (error) {
+    console.error("Resume Management Error:", error);
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message
+    });
+  }
+};
