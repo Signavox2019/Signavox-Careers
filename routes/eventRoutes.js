@@ -11,3 +11,7 @@ router.use(auth);
 router.get('/my-upcoming', auth,permit('candidate'), eventController.getUpcomingEvents);
 
 module.exports = router;
+
+
+
+
