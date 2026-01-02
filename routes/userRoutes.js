@@ -25,6 +25,11 @@ router.put(
 
 // Get all users (admin only)
 router.get('/', auth,permit('admin'), userController.getAllUsers);
+router.get(
+  '/recruiter',auth,
+  permit('admin'),
+  userController.getAllRecruiters
+);
 
 // User stats (admin only)
 router.get( '/stats',auth,permit('admin'),userController.getUserStats);
@@ -50,5 +55,15 @@ router.put(
 router.delete('/:id', auth,permit('admin'), userController.deleteUser);
 // Recruiter stats (admin or the same recruiter)
 router.get('/recruiter/:id/stats', auth, permit('admin', 'recruiter'), userController.getRecruiterStats);
+
+
+
+
+// ✅ NEW: Get recruiter profile using token
+router.get(
+  '/recruiter/me',auth,
+  permit('recruiter'),
+  userController.getMyRecruiterProfile
+);
 
 module.exports = router;

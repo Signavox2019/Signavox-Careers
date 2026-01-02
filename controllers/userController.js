@@ -2,18 +2,6 @@ const User = require('../models/User');
 const Job = require('../models/Job');
 const Application = require('../models/Application');
 
-// Get all users (admin only)
-// exports.getAllUsers = async (req, res) => {
-//   try {
-//     const users = await User.find().select('-password -resetPasswordOtp -resetPasswordExpiry');
-//     res.json({ users });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: 'Server error', error: err.message });
-//   }
-// };
-
-
 // exports.getAllUsers = async (req, res) => {
 //   try {
 //     const users = await User.find().select('-password -resetPasswordOtp -resetPasswordExpiry');
@@ -128,9 +116,9 @@ exports.getAllUsers = async (req, res) => {
       return userObj;
     }));
 
-    res.json({ 
+    res.json({
       totalUsers,
-      users: usersWithExtra 
+      users: usersWithExtra
     });
 
   } catch (err) {
@@ -327,9 +315,8 @@ exports.deleteUser = async (req, res) => {
 };
 
 
-// ============================
 // Get user stats
-// ============================
+
 exports.getUserStats = async (req, res) => {
   try {
     // Total admins
@@ -482,9 +469,7 @@ exports.getRecruiterStats = async (req, res) => {
 };
 
 
-// =======================================
 // GET MY PROFILE  (for any logged-in user)
-// =======================================
 exports.getMyProfile = async (req, res) => {
   try {
     // req.user is set by your auth middleware
@@ -610,3 +595,154 @@ exports.updateMyProfile = async (req, res) => {
   }
 };
 
+// Get All Recruiters (Admin only)
+exports.getAllRecruiters = async (req, res) => {
+  try {
+    // 1️⃣ Fetch all recruiters
+    const recruiters = await User.find({ role: 'recruiter' })
+      .select('-password -resetPasswordOtp -resetPasswordExpiry');
+
+    // 2️⃣ Enrich each recruiter with jobs + applicants
+    const recruitersWithData = await Promise.all(
+      recruiters.map(async (recruiter) => {
+        const recruiterObj = recruiter.toObject();
+
+        // 🔹 Get jobs assigned to this recruiter
+        const jobs = await Job.find({ assignedTo: recruiter._id })
+          .select('title type location status closingDate');
+
+        // 🔹 For each job → get applicants
+        const jobsWithApplicants = await Promise.all(
+          jobs.map(async (job) => {
+            const applications = await Application.find({ job: job._id })
+              .populate('candidate', 'name email phoneNumber')
+              .select('appliedAt stage');
+
+            return {
+              jobId: job._id,
+              title: job.title,
+              type: job.type,
+              location: job.location,
+              status: job.status,
+              closingDate: job.closingDate,
+              applicantCount: applications.length,
+              applicants: applications.map(app => ({
+                candidateId: app.candidate?._id,
+                name: app.candidate?.name,
+                email: app.candidate?.email,
+                phoneNumber: app.candidate?.phoneNumber,
+                stage: app.stage,
+                appliedAt: app.appliedAt
+              }))
+            };
+          })
+        );
+
+        // 🔹 Total applicants handled by recruiter
+        const totalApplicants = jobsWithApplicants.reduce(
+          (sum, job) => sum + job.applicantCount,
+          0
+        );
+
+        return {
+          ...recruiterObj,
+          totalAssignedJobs: jobsWithApplicants.length,
+          totalApplicants,
+          assignedJobs: jobsWithApplicants
+        };
+      })
+    );
+
+    // 3️⃣ Final response
+    res.status(200).json({
+      totalRecruiters: recruitersWithData.length,
+      recruiters: recruitersWithData
+    });
+
+  } catch (err) {
+    console.error('❌ Error in getAllRecruiters:', err);
+    res.status(500).json({
+      message: 'Server error',
+      error: err.message
+    });
+  }
+};
+
+
+
+// Get Recruiter Profile (based on recruiter token)
+exports.getMyRecruiterProfile = async (req, res) => {
+  try {
+    const recruiterId = req.user._id;
+
+    // Fetch recruiter profile
+    const recruiter = await User.findById(recruiterId)
+      .select('-password -resetPasswordOtp -resetPasswordExpiry');
+
+    if (!recruiter) {
+      return res.status(404).json({ message: 'Recruiter not found' });
+    }
+
+    if (recruiter.role !== 'recruiter') {
+      return res.status(403).json({
+        message: 'Access denied. Not a recruiter.'
+      });
+    }
+
+
+    // Fetch assigned jobs
+    const jobs = await Job.find({ assignedTo: recruiterId })
+      .select('_id title type location status team createdAt');
+
+    // Fetch applicants for these jobs
+    const jobIds = jobs.map(job => job._id);
+
+    let applications = [];
+    if (jobIds.length > 0) {
+      applications = await Application.find({ job: { $in: jobIds } })
+        .populate('candidate', 'name email phoneNumber')
+        .populate('job', 'title');
+    }
+
+    // Build job-wise applicant data
+    const jobsWithApplicants = jobs.map(job => {
+      const jobApplicants = applications.filter(
+        app => app.job && app.job._id.toString() === job._id.toString()
+      );
+
+      return {
+        jobId: job._id,
+        title: job.title,
+        type: job.type,
+        location: job.location,
+        status: job.status,
+        team: job.team,
+        totalApplicants: jobApplicants.length,
+        applicants: jobApplicants.map(app => ({
+          applicationId: app._id,
+          candidate: app.candidate,
+          stage: app.stage,
+          appliedAt: app.appliedAt
+        }))
+      };
+    });
+
+    // Final response
+    res.status(200).json({
+      message: 'Recruiter profile fetched successfully',
+      recruiter,
+      stats: {
+        totalAssignedJobs: jobs.length,
+        totalApplicants: applications.length
+      },
+      assignedJobs: jobsWithApplicants
+    });
+
+  } catch (err) {
+    console.error('Error in getMyRecruiterProfile:', err);
+    res.status(500).json({
+      message: 'Server error',
+      error: err.message
+    });
+  }
+};

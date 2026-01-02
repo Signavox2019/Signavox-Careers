@@ -605,6 +605,35 @@ exports.closeJob = async (req, res) => {
 // ==========================
 // Job Statistics (Admin)
 // ==========================
+// exports.getJobStats = async (req, res) => {
+//   try {
+//     await autoCloseExpiredJobs();
+
+//     const totalJobs = await Job.countDocuments();
+//     const openJobs = await Job.countDocuments({ status: 'open' });
+//     const closedJobs = await Job.countDocuments({ status: 'closed' });
+
+//     const monthlyStats = await Job.aggregate([
+//       {
+//         $group: {
+//           _id: { $month: "$createdAt" },
+//           totalJobs: { $sum: 1 }
+//         }
+//       },
+//       { $sort: { "_id": 1 } }
+//     ]);
+
+//     res.json({ totalJobs, openJobs, closedJobs, monthlyStats });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: 'Server error', error: err.message });
+//   }
+// };
+
+
+// ==========================
+// Job Statistics (Admin)
+// ==========================
 exports.getJobStats = async (req, res) => {
   try {
     await autoCloseExpiredJobs();
@@ -613,20 +642,46 @@ exports.getJobStats = async (req, res) => {
     const openJobs = await Job.countDocuments({ status: 'open' });
     const closedJobs = await Job.countDocuments({ status: 'closed' });
 
+    // ✅ YEAR + MONTH based statistics
     const monthlyStats = await Job.aggregate([
       {
         $group: {
-          _id: { $month: "$createdAt" },
+          _id: {
+            year: { $year: "$createdAt" },
+            month: { $month: "$createdAt" }
+          },
           totalJobs: { $sum: 1 }
         }
       },
-      { $sort: { "_id": 1 } }
+      {
+        $sort: {
+          "_id.year": 1,
+          "_id.month": 1
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          year: "$_id.year",
+          month: "$_id.month",
+          totalJobs: 1
+        }
+      }
     ]);
 
-    res.json({ totalJobs, openJobs, closedJobs, monthlyStats });
+    res.json({
+      totalJobs,
+      openJobs,
+      closedJobs,
+      monthlyStats
+    });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error', error: err.message });
+    res.status(500).json({
+      message: 'Server error',
+      error: err.message
+    });
   }
 };
 
